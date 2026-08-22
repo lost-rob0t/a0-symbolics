@@ -1,0 +1,66 @@
+- name: Default
+  chat:
+    provider: openrouter
+    name: anthropic/claude-fable-5
+    api_base: ""
+    ctx_length: 1000000
+    ctx_history: 0.7
+    vision: true
+    max_embeds: 10
+    rl_requests: 0
+    rl_input: 0
+    rl_output: 0
+    kwargs: {}
+  utility:
+    provider: openrouter
+    name: openai/gpt-5.6-luna
+    api_base: ""
+    ctx_length: 1050000
+    ctx_input: 0.7
+    rl_requests: 0
+    rl_input: 0
+    rl_output: 0
+    kwargs:
+      reasoning:
+        effort: max
+  embedding:
+    provider: huggingface
+    name: sentence-transformers/all-MiniLM-L6-v2
+    api_base: ""
+    rl_requests: 0
+    rl_input: 0
+    kwargs: {}
+
+- name: GLM 5.3 MAX / Luna 5.6 MAX
+  chat:
+    provider: openrouter
+    name: z-ai/glm-5.3
+    api_base: ""
+    ctx_length: 1050000
+    ctx_history: 0.7
+    vision: false
+    kwargs:
+      reasoning:
+        effort: max
+  utility:
+    provider: openrouter
+    name: openai/gpt-5.6-luna
+    kwargs:
+      reasoning:
+        effort: max
+
+- name: Luna 5.6 MAX / Gemini Flash-Lite
+  chat:
+    provider: openrouter
+    name: openai/gpt-5.6-luna
+    api_base: ""
+    ctx_length: 1050000
+    ctx_history: 0.7
+    vision: true
+    kwargs:
+      reasoning:
+        effort: max
+  utility:
+    provider: openrouter
+    name: google/gemini-3.1-flash-lite
+    kwargs: {}

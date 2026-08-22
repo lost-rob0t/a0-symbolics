@@ -9,8 +9,9 @@
 - `helpers/model_config.py` owns config resolution, presets, overrides, and runtime model object construction.
 - `api/` owns model config, override, preset, search, and API-key endpoints.
 - `webui/` owns model settings, summaries, switcher, and API-key UI.
-- `extensions/python/startup_migration/` owns conversion from legacy full configs and project presets, followed by first-launch preset initialization.
+- `extensions/python/startup_migration/` owns conversion from legacy full configs and project presets, followed by first-launch preset initialization and fork-local one-time preset-pack migration.
 - `default_config.yaml`, `mode_presets_fallback.yaml`, `provider_metadata.yaml`, `hooks.py`, and `plugin.yaml` own plugin defaults, offline presets, metadata, hooks, and manifest.
+- `lost_robot_presets.yaml` owns the fork's canonical personal model preset pack.
 
 ## Local Contracts
 
@@ -41,7 +42,8 @@
 - Preset editor reset actions must remove the user override through the preset API and refresh the open draft from bundled defaults.
 - Preset rename, delete, and reset actions must repair scoped config and durable/live chat references; removed definitions fall back to `Default`.
 - Migration must preserve existing definitions and distinct scoped model choices, back up replaced user files once, strip inline secrets, and remain idempotent.
-- On every startup after migration, short-circuit when `usr/plugins/_model_config/presets.yaml` exists. Only a missing collection may fetch `agent0ai/a0-presets`; parse remote and plugin-local fallback YAML through the same validator, strip secrets before persistence, and persist `mode_presets_fallback.yaml` when download or validation fails.
+- On every startup after migration, short-circuit the upstream bootstrap when `usr/plugins/_model_config/presets.yaml` exists. Only a missing collection may fetch `agent0ai/a0-presets`; parse remote and plugin-local fallback YAML through the same validator, strip secrets before persistence, and persist `mode_presets_fallback.yaml` when download or validation fails.
+- This fork then applies `lost_robot_presets.yaml` exactly once through `_30_apply_lost_robot_preset_pack.py`. Back up a replaced saved collection, write a version marker only after success, and never overwrite later user edits once the marker exists.
 - Model-name catalogs open below the input from either a field click or the embedded magnifier.
 
 ## Work Guidance

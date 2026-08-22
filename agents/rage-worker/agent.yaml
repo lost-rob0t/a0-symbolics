@@ -1,0 +1,3 @@
+title: RAGE Worker
+description: Recursive Analysis with Gated Execution worker for issue-driven autonomous engineering.
+context: Use for bounded autonomous backlog work where every action must be justified by observed state and an explicit execution gate.
