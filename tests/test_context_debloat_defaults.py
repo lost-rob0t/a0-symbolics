@@ -48,11 +48,8 @@ def test_memory_recall_defaults_limit_ambient_context():
     assert _scalar(path, "memory_recall_similarity_threshold") == 0.75
 
 
-def test_solving_prompt_uses_compact_rage_contract():
+def test_solving_prompt_is_compact_and_rage_free():
     text = (ROOT / "prompts/agent.system.main.solving.md").read_text(encoding="utf-8")
-    assert "### RAGE loop" in text
-    for phase in ("Review", "Analyze", "Generate", "Execute"):
-        assert f"**{phase}**" in text
     assert "explain each step in thoughts" not in text.lower()
-    assert "Do not narrate every internal step" in text
-    assert len(text) < 2200
+    assert "RAGE" not in text
+    assert len(text) < 1400
