@@ -1,0 +1,30 @@
+# Copy this file to compose.yml and customize it for the local machine.
+# compose.yml is intentionally gitignored so host-specific mounts, ports, devices,
+# environment settings, and other local overrides survive repository updates.
+services:
+  agent-zero:
+    container_name: agent-zero
+    image: a0-symbolics:local
+    build:
+      context: ../..
+      dockerfile: DockerfileLocal
+      args:
+        BRANCH: local
+    restart: unless-stopped
+    ports:
+      - "50080:80"
+    volumes:
+      - a0-symbolics-nix:/nix
+      - a0-symbolics-usr:/a0/usr
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  a0-symbolics-nix:
+    name: a0-symbolics-nix
+  a0-symbolics-usr:
+    name: a0-symbolics-usr
