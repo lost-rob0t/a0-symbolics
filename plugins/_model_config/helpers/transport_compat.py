@@ -251,8 +251,10 @@ def _prepare_openrouter_openai_cache_params(
         body["prompt_cache_key"] = explicit_key
     elif "prompt_cache_key" not in body:
         # Match core Agent Zero's direct-OpenAI strategy: derive the key from the
-        # stable prompt/tool material rather than the chat id so chats sharing a
-        # prefix can still reuse the same upstream cache affinity.
+        # reusable leading prompt and the *actual merged Responses tool catalog*,
+        # not the chat id. This avoids steering unrelated tool surfaces onto the
+        # same upstream cache-affinity key while still allowing chats with the
+        # same stable prefix/tool set to share affinity.
         key_kwargs = dict(kwargs)
         extra_body = key_kwargs.get("extra_body")
         if isinstance(extra_body, dict):
@@ -260,6 +262,15 @@ def _prepare_openrouter_openai_cache_params(
             extra_body.pop("session_id", None)
             extra_body.pop("prompt_cache_key", None)
             key_kwargs["extra_body"] = extra_body
+
+        merged_tools = litellm_transport.ResponsesTransport.merge_response_tools(
+            key_kwargs.get("tools"),
+            response_function_tools=key_kwargs.get("a0_responses_function_tools"),
+            response_builtin_tools=key_kwargs.get("responses_builtin_tools"),
+        )
+        if merged_tools:
+            key_kwargs["tools"] = merged_tools
+
         cache_key = litellm_transport._default_prompt_cache_key(
             model,
             messages,
