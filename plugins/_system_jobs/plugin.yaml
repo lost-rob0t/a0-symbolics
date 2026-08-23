@@ -1,0 +1,8 @@
+name: _system_jobs
+title: System Jobs
+description: Persistent real cron jobs and script execution backed by the a0-symbolics Nix runtime.
+version: 0.1.0
+settings_sections: []
+per_project_config: false
+per_agent_config: false
+always_enabled: true

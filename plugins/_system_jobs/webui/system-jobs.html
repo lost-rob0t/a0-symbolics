@@ -1,0 +1,117 @@
+<html>
+<head>
+  <title>System Jobs</title>
+  <script type="module">
+    import { store } from "/plugins/_system_jobs/webui/system-jobs-store.js";
+  </script>
+  <style>
+    .system-jobs { display: flex; flex-direction: column; gap: 1rem; min-width: min(900px, 90vw); }
+    .system-jobs-toolbar { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+    .system-jobs-status { margin-right: auto; opacity: .8; font-size: .9rem; }
+    .system-jobs-table { width: 100%; border-collapse: collapse; }
+    .system-jobs-table th, .system-jobs-table td { text-align: left; padding: .6rem; border-bottom: 1px solid var(--color-border, #333); vertical-align: top; }
+    .system-jobs-actions { display: flex; gap: .35rem; flex-wrap: wrap; }
+    .system-jobs-editor { display: grid; gap: .75rem; padding: 1rem; border: 1px solid var(--color-border, #333); border-radius: .6rem; }
+    .system-jobs-editor label { display: grid; gap: .3rem; }
+    .system-jobs-editor textarea { min-height: 260px; font-family: monospace; resize: vertical; }
+    .system-jobs-editor-row { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+    .system-jobs-log { max-height: 360px; overflow: auto; white-space: pre-wrap; background: rgba(0,0,0,.25); padding: .8rem; border-radius: .4rem; font-family: monospace; }
+    @media (max-width: 700px) { .system-jobs-editor-row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div x-data>
+    <template x-if="$store.systemJobsStore">
+      <div class="system-jobs" x-create="$store.systemJobsStore.onOpen()" x-destroy="$store.systemJobsStore.cleanup()">
+        <div class="system-jobs-toolbar">
+          <div class="system-jobs-status">
+            <strong>cron:</strong>
+            <span x-text="$store.systemJobsStore.status.running ? 'running' : 'not detected'"></span>
+            <span> · </span>
+            <span x-text="$store.systemJobsStore.status.root || '/a0/usr/system-jobs'"></span>
+          </div>
+          <button class="btn" @click="$store.systemJobsStore.refresh()" :disabled="$store.systemJobsStore.loading">Refresh</button>
+          <button class="btn" @click="$store.systemJobsStore.syncCron()">Sync crontab</button>
+          <button class="btn btn-ok" @click="$store.systemJobsStore.newJob()">New job</button>
+        </div>
+
+        <div x-show="$store.systemJobsStore.editorOpen" class="system-jobs-editor">
+          <div class="system-jobs-editor-row">
+            <label>
+              <span>Name</span>
+              <input type="text" x-model="$store.systemJobsStore.editor.name" placeholder="Nightly backup" />
+            </label>
+            <label>
+              <span>Cron schedule</span>
+              <input type="text" x-model="$store.systemJobsStore.editor.schedule" placeholder="0 2 * * *" />
+            </label>
+          </div>
+          <div class="system-jobs-editor-row">
+            <label>
+              <span>Working directory</span>
+              <input type="text" x-model="$store.systemJobsStore.editor.workdir" placeholder="/a0/usr/workdir" />
+            </label>
+            <label style="display:flex;align-items:center;gap:.5rem;align-self:end;padding-bottom:.45rem;">
+              <input type="checkbox" x-model="$store.systemJobsStore.editor.enabled" />
+              <span>Enabled</span>
+            </label>
+          </div>
+          <label>
+            <span>Script</span>
+            <textarea x-model="$store.systemJobsStore.editor.script" spellcheck="false" placeholder="echo hello from system-jobs"></textarea>
+          </label>
+          <div class="system-jobs-actions">
+            <button class="btn btn-ok" @click="$store.systemJobsStore.saveJob()">Save</button>
+            <button class="btn btn-cancel" @click="$store.systemJobsStore.cancelEdit()">Cancel</button>
+          </div>
+        </div>
+
+        <div class="table-wrapper" x-show="!$store.systemJobsStore.loading">
+          <table class="data-table system-jobs-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Schedule</th>
+                <th>State</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="job in $store.systemJobsStore.jobs" :key="job.id">
+                <tr>
+                  <td>
+                    <strong x-text="job.name"></strong>
+                    <div style="opacity:.65;font-size:.8rem;" x-text="job.workdir"></div>
+                  </td>
+                  <td><code x-text="job.schedule"></code></td>
+                  <td x-text="job.enabled ? 'enabled' : 'disabled'"></td>
+                  <td>
+                    <div class="system-jobs-actions">
+                      <button class="btn btn-small" @click="$store.systemJobsStore.editJob(job)">Edit</button>
+                      <button class="btn btn-small" @click="$store.systemJobsStore.runJob(job)">Run</button>
+                      <button class="btn btn-small" @click="$store.systemJobsStore.loadLog(job)">Log</button>
+                      <button class="btn btn-small btn-cancel" @click="$confirmClick($event, () => $store.systemJobsStore.deleteJob(job))">Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+              <tr x-show="$store.systemJobsStore.jobs.length === 0">
+                <td colspan="4" style="opacity:.7;">No managed system jobs yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div x-show="$store.systemJobsStore.logJob" class="system-jobs-editor">
+          <div class="system-jobs-toolbar">
+            <strong>Log: <span x-text="$store.systemJobsStore.logJob?.name"></span></strong>
+            <button class="btn" @click="$store.systemJobsStore.loadLog($store.systemJobsStore.logJob)">Refresh log</button>
+            <button class="btn btn-cancel" @click="$store.systemJobsStore.closeLog()">Close</button>
+          </div>
+          <pre class="system-jobs-log" x-text="$store.systemJobsStore.logText || '(no output)'" ></pre>
+        </div>
+      </div>
+    </template>
+  </div>
+</body>
+</html>

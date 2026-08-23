@@ -1,0 +1,11 @@
+<!-- System Jobs -->
+<div x-data>
+  <button
+    x-move-after=".config-button#dashboard"
+    class="config-button"
+    id="system-jobs-dash"
+    @click="openModal('/plugins/_system_jobs/webui/system-jobs.html')"
+    title="System Jobs">
+    <x-icon name="schedule"></x-icon>
+  </button>
+</div>
