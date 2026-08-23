@@ -10,6 +10,20 @@ Manage the reusable model presets used for Agent Zero's main, utility, and embed
 - Non-default presets may omit advanced fields or model slots; omitted values resolve from `Default`, while provider-specific `kwargs` are replaced or cleared instead of leaking between providers.
 - API keys remain in the approved environment/settings flow and are never written into preset YAML.
 
+## OpenRouter Prompt Caching
+
+Agent Zero treats OpenRouter prompt caching as a provider/model capability instead of adding Anthropic-style `cache_control` markers to every OpenRouter request.
+
+- OpenAI, xAI/Grok, Moonshot, DeepSeek, Z.AI, and Gemini 2.5+ use their documented provider-side automatic/implicit prompt caches. Agent Zero does not inject `cache_control` blocks for these families, so tool turns can remain on the Responses transport where supported.
+- Anthropic defaults to explicit per-block `cache_control` markers. OpenRouter documents those breakpoints as portable across Anthropic-compatible endpoints including Bedrock and Vertex. A caller may instead set top-level `cache_control` in model kwargs (for example `{"type":"ephemeral","ttl":"1h"}`); that opts into OpenRouter's automatic Anthropic cache mode, which currently routes only to Anthropic direct.
+- Alibaba/Qwen explicit cache markers are used only for the exact OpenRouter-documented models: `qwen/qwen3-max`, `qwen/qwen-plus`, `qwen/qwen3.6-plus`, `qwen/qwen3-coder-plus`, and `qwen/qwen3-coder-flash`. Unsupported snapshots such as `qwen/qwen3.5-plus-02-15` and `qwen/qwen3.5-flash-02-23` are deliberately left unmarked.
+- Unknown OpenRouter model families are passive: Agent Zero does not invent cache markers. Any provider-side implicit caching can still work normally.
+- Every OpenRouter call inside an Agent Zero context gets a stable `session_id` unless the preset/caller already supplied one. OpenRouter uses it for sticky provider routing so multi-turn agents return to the endpoint holding the warm prompt cache.
+- OpenAI routes also get a stable `prompt_cache_key` derived from reusable prompt/tool material. User-supplied `prompt_cache_key`, `prompt_cache_options`, and legacy `prompt_cache_retention` values are preserved. OpenRouter-specific cache/routing parameters are carried through LiteLLM's `extra_body` compatibility path.
+- OpenRouter response caching (`X-OpenRouter-Cache`) is a separate whole-response replay feature and is **not** enabled automatically. It may be useful for deterministic tests/retries but should not silently replay normal agent/tool turns.
+
+Current provider behavior is based on OpenRouter's Prompt Caching documentation. When OpenRouter changes a model family's caching contract, update `helpers/transport_compat.py` and its policy-matrix regressions together.
+
 ## Scoped Selection
 
 Global, project, project/profile, and agent-profile scopes store only a preset name in their standard plugin `config.json`:
@@ -44,9 +58,11 @@ At every startup, legacy migration runs first. If `usr/plugins/_model_config/pre
 ## Key Files
 
 - `helpers/model_config.py` owns preset validation, resolution, compatibility config shapes, and runtime model construction.
+- `helpers/transport_compat.py` owns reasoning-effort compatibility plus the OpenRouter prompt-cache/sticky-routing policy.
 - `api/model_presets.py` owns global preset editing, scoped selection, and reference repair after rename/delete/reset.
 - `extensions/python/startup_migration/_10_migrate_model_config.py` owns legacy conversion.
 - `extensions/python/startup_migration/_20_bootstrap_model_presets.py` owns missing-collection initialization and plugin-local fallback.
+- `extensions/python/startup_migration/_90_transport_compat.py` installs transport compatibility once per process.
 - `webui/preset-overview.html` is the shared Settings/plugin-settings summary widget.
 - `webui/main.html` is the preset editor.
 
