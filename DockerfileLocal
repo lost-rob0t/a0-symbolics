@@ -5,11 +5,26 @@ FROM agent0ai/agent-zero-base:latest
 # Set BRANCH to "local" if not provided
 ARG BRANCH=local
 ENV BRANCH=$BRANCH
+ENV NIX_REMOTE=local
+ENV PATH="/root/.nix-profile/bin:${PATH}"
 
 # Copy filesystem files to root
 COPY ./docker/run/fs/ /
 # Copy current development files to git, they will only be used in "local" branch
 COPY ./ /git/agent-zero
+
+# Keep the Nix binary image-owned while /nix itself can be a persistent volume.
+# Nix runs daemonless in this container; Home Manager owns user CLI packages.
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nix-bin \
+    && mkdir -p /etc/nix /nix/store /nix/var/nix/profiles/per-user/root /nix/var/nix/gcroots/per-user/root \
+    && printf '%s\n' \
+        'experimental-features = nix-command flakes' \
+        'sandbox = false' \
+        'build-users-group =' \
+        > /etc/nix/nix.conf \
+    && nix-store --init \
+    && rm -rf /var/lib/apt/lists/*
 
 # pre installation steps
 RUN bash /ins/pre_install.sh $BRANCH
@@ -27,10 +42,18 @@ RUN echo "cache buster $CACHE_DATE" && bash /ins/install_A02.sh $BRANCH
 # post installation steps
 RUN bash /ins/post_install.sh $BRANCH
 
+# Add the thin local wrapper and reusable Home Manager seed after A0 installation.
+COPY ./docker/symbolics/ /opt/a0-symbolics/
+
 # Expose ports
 EXPOSE 22 80 9000-9009
 
-RUN chmod +x /exe/initialize.sh /exe/run_A0.sh /exe/run_searxng.sh /exe/run_tunnel_api.sh
+RUN chmod +x \
+    /exe/initialize.sh \
+    /exe/run_A0.sh \
+    /exe/run_searxng.sh \
+    /exe/run_tunnel_api.sh \
+    /opt/a0-symbolics/initialize.sh
 
-# initialize runtime and switch to supervisord
-CMD ["/exe/initialize.sh", "$BRANCH"]
+# Prepare persistent Nix/Home Manager state, then hand off to normal A0 startup.
+CMD ["/opt/a0-symbolics/initialize.sh"]

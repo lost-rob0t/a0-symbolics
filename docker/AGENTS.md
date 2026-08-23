@@ -8,7 +8,8 @@
 ## Ownership
 
 - `base/` owns the base image context.
-- `run/` owns the runnable image context and compose file.
+- `run/` owns the runnable image context and upstream-style compose file.
+- `symbolics/` owns the local a0-symbolics compose wrapper, persistent Nix store, and reusable Home Manager seed.
 - Root `DockerfileLocal` is owned by the root contract but must stay compatible with this directory.
 
 ## Local Contracts
@@ -17,6 +18,7 @@
 - Verify backend imports and plugin hooks with `/opt/venv-a0`; packages installed into `/opt/venv` do not prove framework compatibility.
 - Do not bake secrets, local `.env` values, or user data into images.
 - Keep compose mounts aligned with `usr/` and other runtime-state expectations.
+- The symbolics compose path persists only `/nix` and `/a0/usr`; application code remains image-owned so updates cannot be masked by a stale persistent `/a0` tree.
 - Image changes that affect GitHub publishing must stay synchronized with `.github/workflows/docker-publish.yml`.
 
 ## Work Guidance
@@ -38,3 +40,4 @@ Direct child DOX files:
 | --- | --- |
 | [base/AGENTS.md](base/AGENTS.md) | Base image Dockerfile, copied filesystem, and installation scripts. |
 | [run/AGENTS.md](run/AGENTS.md) | Runnable image Dockerfile, compose example, entrypoints, and install scripts. |
+| [symbolics/AGENTS.md](symbolics/AGENTS.md) | Local two-volume Nix/Home Manager runtime wrapper. |

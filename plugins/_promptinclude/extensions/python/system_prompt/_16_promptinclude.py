@@ -7,6 +7,12 @@ from agent import Agent, LoopData
 from plugins._promptinclude.helpers.scanner import scan_promptinclude_files, ScanResult
 
 
+DEFAULT_MAX_DEPTH = 3
+DEFAULT_MAX_FILE_TOKENS = 750
+DEFAULT_MAX_FILE_COUNT = 8
+DEFAULT_MAX_TOTAL_TOKENS = 1500
+
+
 class PromptInclude(Extension):
 
     async def execute(
@@ -29,10 +35,10 @@ class PromptInclude(Extension):
             scan_promptinclude_files,
             scan_path,
             name_pattern=name_pattern,
-            max_depth=config.get("max_depth", 10),
-            max_file_tokens=config.get("max_file_tokens", 2000),
-            max_file_count=config.get("max_file_count", 50),
-            max_total_tokens=config.get("max_total_tokens", 8000),
+            max_depth=config.get("max_depth", DEFAULT_MAX_DEPTH),
+            max_file_tokens=config.get("max_file_tokens", DEFAULT_MAX_FILE_TOKENS),
+            max_file_count=config.get("max_file_count", DEFAULT_MAX_FILE_COUNT),
+            max_total_tokens=config.get("max_total_tokens", DEFAULT_MAX_TOTAL_TOKENS),
             gitignore=config.get("gitignore", ""),
         )
 
