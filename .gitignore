@@ -48,3 +48,7 @@ agent_history.gif
 .agent/**
 .claude/**
 .playwright-cli/
+
+# Local a0-symbolics Docker configuration.
+# Copy docker/symbolics/compose.yml.example to this path and customize freely.
+/docker/symbolics/compose.yml
