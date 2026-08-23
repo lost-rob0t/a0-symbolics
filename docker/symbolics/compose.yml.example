@@ -1,3 +1,6 @@
+# Copy this file to compose.yml and customize it for the local machine.
+# compose.yml is intentionally gitignored so host-specific mounts, ports, devices,
+# environment settings, and other local overrides survive repository updates.
 services:
   agent-zero:
     container_name: agent-zero
