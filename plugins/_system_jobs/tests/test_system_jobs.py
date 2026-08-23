@@ -74,9 +74,10 @@ def test_symbolics_runtime_uses_nix_cron_and_persistent_spool():
     assert '"$SYSTEM_JOBS_DIR/cron/tabs"' in initialize
     assert 'ln -s "$SYSTEM_JOBS_DIR/cron" /var/cron' in initialize
     assert "command=$cron_bin -n" in initialize
+    assert "ensure_system_jobs_home_manager" in initialize
 
 
-def test_system_jobs_webui_and_skill_are_present():
+def test_system_jobs_webui_skill_and_tool_prompt_are_present():
     plugin_root = Path(__file__).resolve().parents[1]
     dashboard = (plugin_root / "webui" / "system-jobs.html").read_text()
     sidebar = (
@@ -87,9 +88,14 @@ def test_system_jobs_webui_and_skill_are_present():
         / "system-jobs-entry.html"
     ).read_text()
     skill = (plugin_root / "skills" / "system-jobs" / "SKILL.md").read_text()
+    prompt = (plugin_root / "prompts" / "agent.system.tool.system_jobs.md").read_text()
+    tool = (plugin_root / "tools" / "system_jobs.py").read_text()
 
     assert "New job" in dashboard
     assert "Run" in dashboard
     assert "Log" in dashboard
     assert "openModal('/plugins/_system_jobs/webui/system-jobs.html')" in sidebar
     assert "system_jobs" in skill
+    assert prompt.startswith("### system_jobs\n")
+    assert '"tool_name": "system_jobs"' in prompt
+    assert "class SystemJobsTool(Tool):" in tool
