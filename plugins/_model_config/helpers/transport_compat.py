@@ -17,6 +17,14 @@ ALL_REASONING_EFFORTS = frozenset(
     }
 )
 
+# OpenRouter documents automatic provider prompt caching for OpenAI GPT-5.6+
+# models. These models do not need cache_control markers to receive cached-input
+# pricing, so native Agent Zero tool turns can stay on Responses without giving
+# up prompt caching.
+OPENROUTER_AUTOMATIC_CACHE_MODEL_PREFIXES = (
+    "openrouter/openai/gpt-5.6",
+)
+
 _PATCH_MARKER = "_a0_model_config_transport_compat"
 
 
@@ -44,14 +52,14 @@ def install_transport_compat() -> None:
         has_a0_function_tools = litellm_transport._has_tools(
             kwargs.get("a0_responses_function_tools")
         )
-        provider = litellm_transport._normalized_provider(self.model, kwargs)
+        automatic_prompt_cache = _uses_openrouter_automatic_prompt_cache(self.model)
 
-        # OpenRouter cache_control markers intentionally route through Chat
-        # Completions. For Agent Zero native-tool turns that loses the stronger
-        # Responses function-call contract and some models emit textual
-        # pseudo-tool syntax instead. Keep those turns on Responses while
-        # preserving the existing cache behavior for ordinary OpenRouter calls.
-        if explicit_caching and has_a0_function_tools and provider == "openrouter":
+        # cache_control markers intentionally route OpenRouter through Chat
+        # Completions. On GPT-5.6+ the provider already performs automatic
+        # prompt caching, so adding those markers only sacrifices the stronger
+        # native Responses function-call contract. Skip the markers for these
+        # native tool turns while keeping A0's explicit-caching intent visible.
+        if explicit_caching and has_a0_function_tools and automatic_prompt_cache:
             kwargs["a0_explicit_prompt_caching"] = False
             self.kwargs = kwargs
             original(self)
@@ -62,3 +70,8 @@ def install_transport_compat() -> None:
 
     setattr(patched_post_init, _PATCH_MARKER, True)
     transport_cls.__post_init__ = patched_post_init
+
+
+def _uses_openrouter_automatic_prompt_cache(model: str) -> bool:
+    normalized = str(model or "").strip().lower()
+    return normalized.startswith(OPENROUTER_AUTOMATIC_CACHE_MODEL_PREFIXES)
