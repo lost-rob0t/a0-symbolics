@@ -3,6 +3,8 @@ set -euo pipefail
 
 readonly HM_DIR="${A0_HOME_MANAGER_DIR:-/a0/usr/home-manager}"
 readonly HM_SEED_DIR="/opt/a0-symbolics/home-manager"
+readonly SYSTEM_JOBS_DIR="${A0_SYSTEM_JOBS_DIR:-/a0/usr/system-jobs}"
+readonly SUPERVISOR_CONF="/etc/supervisor/conf.d/supervisord.conf"
 
 seed_home_manager() {
   mkdir -p "$HM_DIR"
@@ -50,7 +52,34 @@ activate_home_manager() {
     --flake "$HM_DIR#root-$system"
 }
 
+prepare_system_jobs() {
+  local cron_bin="/root/.nix-profile/bin/cron"
+
+  if [[ ! -x "$cron_bin" ]]; then
+    printf 'Nix-managed cron binary is missing: %s\n' "$cron_bin" >&2
+    return 1
+  fi
+
+  mkdir -p \
+    "$SYSTEM_JOBS_DIR/cron/tabs" \
+    "$SYSTEM_JOBS_DIR/scripts" \
+    "$SYSTEM_JOBS_DIR/logs"
+  chmod 0700 "$SYSTEM_JOBS_DIR/cron" "$SYSTEM_JOBS_DIR/cron/tabs"
+  touch "$SYSTEM_JOBS_DIR/cron/cron.deny"
+
+  # Nixpkgs' Vixie cron uses /var/cron. Keep its spool inside /a0/usr so
+  # both plugin-managed jobs and manual `crontab` entries survive rebuilds.
+  rm -rf /var/cron
+  ln -s "$SYSTEM_JOBS_DIR/cron" /var/cron
+
+  # Reuse Agent Zero's existing supervised cron slot, but run the Nix binary.
+  sed -i \
+    "s#^command=/usr/sbin/cron -f$#command=$cron_bin -n#" \
+    "$SUPERVISOR_CONF"
+}
+
 seed_home_manager
 activate_home_manager
+prepare_system_jobs
 
 exec /exe/initialize.sh "${BRANCH:-local}"
