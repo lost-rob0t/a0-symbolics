@@ -4,8 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_symbolics_compose_persists_only_nix_and_user_state():
-    compose = (ROOT / "docker" / "symbolics" / "compose.yml").read_text(encoding="utf-8")
+def test_symbolics_compose_example_persists_only_nix_and_user_state():
+    compose = (ROOT / "docker" / "symbolics" / "compose.yml.example").read_text(encoding="utf-8")
     mount_lines = [
         line.strip()
         for line in compose.splitlines()
@@ -17,6 +17,12 @@ def test_symbolics_compose_persists_only_nix_and_user_state():
         "- a0-symbolics-usr:/a0/usr",
     ]
     assert ":/a0\n" not in compose
+
+
+def test_symbolics_local_compose_is_gitignored():
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert "/docker/symbolics/compose.yml" in gitignore
+    assert (ROOT / "docker" / "symbolics" / "compose.yml.example").is_file()
 
 
 def test_symbolics_image_keeps_nix_binary_image_owned():
