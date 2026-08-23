@@ -7,6 +7,7 @@
   home.packages = with pkgs; [
     bashInteractive
     bat
+    cron
     curl
     eza
     fd
