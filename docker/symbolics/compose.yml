@@ -22,4 +22,6 @@ services:
 
 volumes:
   a0-symbolics-nix:
+    name: a0-symbolics-nix
   a0-symbolics-usr:
+    name: a0-symbolics-usr
