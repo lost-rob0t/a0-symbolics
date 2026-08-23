@@ -17,6 +17,29 @@ seed_home_manager() {
   done
 }
 
+ensure_system_jobs_home_manager() {
+  local home_nix="$HM_DIR/home.nix"
+
+  if grep -Eq '^[[:space:]]+cron[[:space:]]*$' "$home_nix"; then
+    return
+  fi
+
+  python3 - "$home_nix" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+needle = "  home.packages = with pkgs; [\n"
+if needle not in text:
+    raise SystemExit(
+        "System Jobs needs pkgs.cron, but home.packages could not be located in "
+        f"{path}. Add `cron` to the Home Manager package list."
+    )
+path.write_text(text.replace(needle, needle + "    cron\n", 1), encoding="utf-8")
+PY
+}
+
 nix_system() {
   case "$(uname -m)" in
     x86_64)
@@ -79,6 +102,7 @@ prepare_system_jobs() {
 }
 
 seed_home_manager
+ensure_system_jobs_home_manager
 activate_home_manager
 prepare_system_jobs
 
