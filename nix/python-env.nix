@@ -1,6 +1,17 @@
 { pkgs }:
 let
-  ps = pkgs.python312Packages;
+  # `inquirer` has one interactive pexpect acceptance test that intermittently
+  # times out in the headless Nix/GitHub Actions sandbox. Override the Python
+  # package scope so transitive users (chalice -> aioboto3 -> ...) see the same
+  # package, while retaining all other inquirer and dependency checks.
+  python = pkgs.python312.override {
+    packageOverrides = _final: prev: {
+      inquirer = prev.inquirer.overridePythonAttrs (old: {
+        disabledTests = (old.disabledTests or [ ]) ++ [ "test_default_input" ];
+      });
+    };
+  };
+  ps = python.pkgs;
   patchright = ps.buildPythonPackage {
     pname = "patchright";
     version = "1.61.2";
@@ -108,4 +119,4 @@ let
     wsproto patchright pytest pytest-asyncio pytest-mock
   ];
 in
-pkgs.python312.withPackages (_: packages)
+python.withPackages (_: packages)
