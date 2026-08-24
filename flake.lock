@@ -42,16 +42,15 @@
         ]
       },
       "locked": {
-        "lastModified": 1787554335,
+        "lastModified": 1787554853,
         "narHash": "sha256-9wTSzkUmItzghEBjlKVwWFlThIt1jhRtfd4KQiFsdlc=",
         "owner": "lost-rob0t",
         "repo": "prolog-rlm",
-        "rev": "90a054137a38b5b5231e6a45037597e52a5b5f2d",
+        "rev": "718abd0df30c0507ceb816ec2f494948cfa15340",
         "type": "github"
       },
       "original": {
         "owner": "lost-rob0t",
-        "ref": "codex/sol-high-integration",
         "repo": "prolog-rlm",
         "type": "github"
       }
