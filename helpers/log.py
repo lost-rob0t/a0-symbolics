@@ -1,5 +1,6 @@
 import copy
 import json
+import logging
 import threading
 import time
 import uuid
@@ -15,8 +16,10 @@ if TYPE_CHECKING:
     from agent import AgentContext
 
 
+_LOGGER = logging.getLogger(__name__)
 _MARK_DIRTY_ALL = None
 _MARK_DIRTY_FOR_CONTEXT = None
+MASKING_FAILURE_REDACTION = "<< Secret value redacted: masking unavailable >>"
 
 
 def _lazy_mark_dirty_all(*, reason: str | None = None) -> None:
@@ -416,27 +419,65 @@ class Log:
             self.logs = []
         self.set_initial_progress()
 
+    @staticmethod
+    def _redact_masking_failure(obj: T) -> T:
+        """Fail closed without exposing the candidate value when masking is unavailable."""
+        if isinstance(obj, str):
+            return cast(T, MASKING_FAILURE_REDACTION)
+        if isinstance(obj, dict):
+            return cast(T, {k: Log._redact_masking_failure(v) for k, v in obj.items()})
+        if isinstance(obj, list):
+            return cast(T, [Log._redact_masking_failure(item) for item in obj])
+        if isinstance(obj, tuple):
+            return cast(T, tuple(Log._redact_masking_failure(item) for item in obj))
+        return obj
+
+    @staticmethod
+    def _report_masking_failure(error: Exception) -> None:
+        # Never include the exception message or candidate value here: either can
+        # contain the secret that this boundary is trying to protect.
+        _LOGGER.error(
+            "Secret masking failed; candidate value was redacted (%s)",
+            type(error).__name__,
+        )
+
+    def _mask_recursive_with_manager(self, obj: T, secrets_mgr: Any) -> T:
+        if isinstance(obj, str):
+            try:
+                return cast(T, secrets_mgr.mask_values(obj))
+            except Exception as error:
+                self._report_masking_failure(error)
+                return self._redact_masking_failure(obj)
+        if isinstance(obj, dict):
+            return cast(
+                T,
+                {
+                    k: self._mask_recursive_with_manager(v, secrets_mgr)
+                    for k, v in obj.items()
+                },
+            )
+        if isinstance(obj, list):
+            return cast(
+                T,
+                [self._mask_recursive_with_manager(item, secrets_mgr) for item in obj],
+            )
+        if isinstance(obj, tuple):
+            return cast(
+                T,
+                tuple(
+                    self._mask_recursive_with_manager(item, secrets_mgr) for item in obj
+                ),
+            )
+        return obj
+
     def _mask_recursive(self, obj: T) -> T:
-        """Recursively mask secrets in nested objects."""
+        """Recursively mask secrets and fail closed at the smallest safe unit."""
         try:
             from agent import AgentContext
+
             secrets_mgr = get_secrets_manager(self.context or AgentContext.current())
+        except Exception as error:
+            self._report_masking_failure(error)
+            return self._redact_masking_failure(obj)
 
-            # debug helper to identify context mismatch
-            # self_id = self.context.id if self.context else None
-            # current_ctx = AgentContext.current()
-            # current_id = current_ctx.id if current_ctx else None
-            # if self_id != current_id:
-            #     print(f"Context ID mismatch: {self_id} != {current_id}")
-
-            if isinstance(obj, str):
-                return cast(Any, secrets_mgr.mask_values(obj))
-            elif isinstance(obj, dict):
-                return {k: self._mask_recursive(v) for k, v in obj.items()}  # type: ignore
-            elif isinstance(obj, list):
-                return [self._mask_recursive(item) for item in obj]  # type: ignore
-            else:
-                return obj
-        except Exception:
-            # If masking fails, return original object
-            return obj
+        return self._mask_recursive_with_manager(obj, secrets_mgr)
