@@ -40,13 +40,13 @@ Allowed without asking:
 
 - Read repository files.
 - Update files under `usr/`.
+- Create commits, push branches, open/update pull requests, and merge requested work when repository gates are green.
 
 Ask before:
 
 - Installing dependencies.
 - Deleting core files outside `usr/` or `tmp/`.
 - Modifying `agent.py` or `initialize.py`.
-- Creating commits or pushing branches.
 
 ## DOX Workflow
 
@@ -65,6 +65,7 @@ Ask before:
 | --- | --- |
 | [.github/AGENTS.md](.github/AGENTS.md) | GitHub Actions workflows and release automation scripts. |
 | [agents/AGENTS.md](agents/AGENTS.md) | Bundled agent profiles, profile-local prompts, and tools. |
+| [android/AGENTS.md](android/AGENTS.md) | Android application shell, WebView compatibility boundary, build, and release workflow. |
 | [api/AGENTS.md](api/AGENTS.md) | HTTP API and WebSocket handler entry points. |
 | [conf/AGENTS.md](conf/AGENTS.md) | Repository-shipped configuration defaults and templates. |
 | [docker/AGENTS.md](docker/AGENTS.md) | Docker build contexts, images, compose files, and runtime layout. |
