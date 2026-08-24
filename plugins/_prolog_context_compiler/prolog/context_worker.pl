@@ -10,9 +10,9 @@ main(Argv) :-
 load_agent_zero_adapter(Argv) :-
     (   append(_, ['--prolog-root', Root0|_], Argv)
     ->  atom_string(Root, Root0),
-        directory_file_path(Root, 'prolog/rlm_agent_zero_adapter.pl', Adapter),
+        directory_file_path(Root, 'prolog/adaptors/rlm_agent_zero_adapter.pl', Adapter),
         load_files(Adapter, [silent(true)])
-    ;   use_module(library(rlm_agent_zero_adapter))
+    ;   use_module(library(adaptors/rlm_agent_zero_adapter))
     ).
 
 request_loop :-

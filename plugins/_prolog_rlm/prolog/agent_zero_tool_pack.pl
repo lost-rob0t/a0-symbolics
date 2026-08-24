@@ -10,7 +10,7 @@ for an agent.  Prolog-RLM validates the inert manifest and schemas, while the
 trusted host supplies the only executable handler closure.
 */
 
-:- use_module(library(rlm_agent_zero_adapter)).
+:- use_module(library(adaptors/rlm_agent_zero_adapter)).
 :- use_module(library(rlm_closed_data)).
 :- use_module(library(rlm_tool_loader)).
 
