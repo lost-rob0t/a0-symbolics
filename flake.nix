@@ -49,7 +49,9 @@
               ln -sfn "$state_dir/usr" "$runtime_root/usr"
               ln -sfn "$state_dir/tmp" "$runtime_root/tmp"
               export TMPDIR="$state_dir/tmp"
-              export A0_SYMBOLICS_MODE="''${A0_SYMBOLICS_MODE:-rlm}"
+              if [ -z "''${A0_SYMBOLICS_MODE:-}" ] && [ ! -f "$state_dir/usr/plugins/_symbolics/config.json" ]; then
+                export A0_SYMBOLICS_MODE=rlm
+              fi
               export SWIPL_PACK_PATH="${prologRlm}/share/swi-prolog/pack''${SWIPL_PACK_PATH:+:$SWIPL_PACK_PATH}"
               cd "$runtime_root"
               exec ${python}/bin/python "$source_root/run_ui.py" "$@"
@@ -78,8 +80,12 @@
         in {
           default = pkgs.mkShell {
             packages = [ python pkgs.swi-prolog prologRlm ];
-            A0_SYMBOLICS_MODE = "rlm";
             SWIPL_PACK_PATH = "${prologRlm}/share/swi-prolog/pack";
+            shellHook = ''
+              if [ -z "''${A0_SYMBOLICS_MODE:-}" ] && [ ! -f usr/plugins/_symbolics/config.json ]; then
+                export A0_SYMBOLICS_MODE=rlm
+              fi
+            '';
           };
         });
 
@@ -117,7 +123,6 @@
             ln -sfn "$state_dir/usr" "$runtime_root/usr"
             ln -sfn "$state_dir/tmp" "$runtime_root/tmp"
             export TMPDIR="$state_dir/tmp"
-            export A0_SYMBOLICS_MODE=rlm
             cd "$runtime_root"
             ${python}/bin/python - <<'PY'
             import os
@@ -126,18 +131,31 @@
             from helpers import plugins
             from plugins._symbolics.helpers.mode import sync_runtime_mode
 
+            symbolics_config = Path("usr/plugins/_symbolics/config.json")
+            symbolics_config.parent.mkdir(parents=True, exist_ok=True)
+
+            # Packaged default: RLM when no mode has been saved yet.
+            os.environ["A0_SYMBOLICS_MODE"] = "rlm"
             assert sync_runtime_mode() == "rlm"
             assert plugins.get_toggle_state("_prolog_rlm") == "enabled"
             assert plugins.get_toggle_state("_prolog_context_compiler") == "enabled"
             assert Path("usr/plugins/_prolog_rlm/.toggle-1").is_file()
             assert Path("usr/plugins/_prolog_context_compiler/.toggle-1").is_file()
 
-            os.environ["A0_SYMBOLICS_MODE"] = "native"
+            # Once a user saves a mode, the packaged default must stop masking it.
+            symbolics_config.write_text('{"mode":"native"}', encoding="utf-8")
+            os.environ.pop("A0_SYMBOLICS_MODE", None)
             assert sync_runtime_mode() == "native"
             assert plugins.get_toggle_state("_prolog_rlm") == "disabled"
             assert plugins.get_toggle_state("_prolog_context_compiler") == "disabled"
             assert Path("usr/plugins/_prolog_rlm/.toggle-0").is_file()
             assert Path("usr/plugins/_prolog_context_compiler/.toggle-0").is_file()
+
+            # A host-provided explicit deployment override remains authoritative.
+            os.environ["A0_SYMBOLICS_MODE"] = "rlm"
+            assert sync_runtime_mode() == "rlm"
+            assert plugins.get_toggle_state("_prolog_rlm") == "enabled"
+            assert plugins.get_toggle_state("_prolog_context_compiler") == "enabled"
             PY
             touch "$out"
           '';
