@@ -17,20 +17,34 @@ import androidx.compose.ui.platform.LocalContext
 
 private const val PREFS = "a0_android"
 private const val KEY_URL = "server_url"
+internal const val DEFAULT_SERVER_URL = "http://127.0.0.1:5080"
+
+private val AgentZeroDarkColors = darkColorScheme(
+    primary = Color(0xFF9B87F5),
+    onPrimary = Color(0xFF100A22),
+    primaryContainer = Color(0xFF2B2150),
+    onPrimaryContainer = Color(0xFFE7DEFF),
+    secondary = Color(0xFF79D7FF),
+    background = Color(0xFF090A0D),
+    onBackground = Color(0xFFF4F2F7),
+    surface = Color(0xFF121318),
+    onSurface = Color(0xFFF4F2F7),
+    surfaceVariant = Color(0xFF1B1C23),
+    onSurfaceVariant = Color(0xFFB9B7C2),
+    outline = Color(0xFF77737F),
+    outlineVariant = Color(0xFF34323B),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MaterialTheme(
-                colorScheme = darkColorScheme(
-                    primary = Color(0xFF8FF0C8),
-                    secondary = Color(0xFF8BD7F8),
-                    background = Color(0xFF080C0E),
-                    surface = Color(0xFF101619),
-                ),
-            ) { AgentZeroApp() }
+            MaterialTheme(colorScheme = AgentZeroDarkColors) {
+                AgentZeroApp()
+            }
         }
     }
 }
@@ -39,7 +53,10 @@ class MainActivity : ComponentActivity() {
 private fun AgentZeroApp() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
-    var server by remember { mutableStateOf(prefs.getString(KEY_URL, null)) }
+    var server by remember {
+        mutableStateOf<String?>(prefs.getString(KEY_URL, null) ?: DEFAULT_SERVER_URL)
+    }
+
     if (server == null) {
         SetupScreen { url ->
             prefs.edit().putString(KEY_URL, url).apply()
