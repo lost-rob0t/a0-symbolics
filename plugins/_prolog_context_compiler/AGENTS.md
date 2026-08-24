@@ -19,7 +19,7 @@
 - Prompt visibility never grants tool authority, and native schemas may only be removed by a projection.
 - Tools registered through `register_permanent_tools` remain provider-visible whenever they are enabled and allowed by Agent Zero.
 - Catalog construction must load the paired Prolog-RLM core declaration explicitly; permanent visibility must not depend on plugin import order.
-- A source checkout and an installed `library(rlm_agent_zero_adapter)` are equivalent supported modes.
+- Source-checkout mode and installed `library(adaptors/rlm_agent_zero_adapter)` mode are both supported.
 - Crash, timeout, malformed JSON, missing fields, and oversized replies fail explicitly; none may become an empty successful projection.
 - Persisted history stays separate from the bounded provider-visible working projection.
 
