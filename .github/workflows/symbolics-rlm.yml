@@ -43,6 +43,13 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Refresh exact Prolog-RLM lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix flake lock --update-input prolog-rlm
+          cat flake.lock
+
       - name: Checkout pinned Prolog-RLM test source
         shell: bash
         run: |
