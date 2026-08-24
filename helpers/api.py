@@ -17,6 +17,7 @@ from flask import (
     url_for,
 )
 from werkzeug.wrappers.response import Response as BaseResponse
+from werkzeug.routing import BuildError
 from helpers.print_style import PrintStyle
 from helpers.errors import format_error
 from helpers import files, cache
@@ -138,7 +139,11 @@ def get_safe_next_url(value: str | None, fallback: str | None = None) -> str | N
 def get_current_request_next_url() -> str:
     """Return the current request path/query as a safe relative redirect target."""
     next_url = request.full_path if request.query_string else request.path
-    return get_safe_next_url(next_url, url_for("serve_index")) or url_for("serve_index")
+    try:
+        fallback = url_for("serve_index")
+    except BuildError:
+        fallback = "/"
+    return get_safe_next_url(next_url, fallback) or fallback
 
 
 def requires_api_key(f):

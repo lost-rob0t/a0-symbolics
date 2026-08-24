@@ -61,12 +61,6 @@ _UNSET = object()
 
 def install_transport_compat() -> None:
     """Install model-config transport compatibility fixes once per process."""
-    litellm_transport.RESPONSES_REASONING_EFFORTS.update(ALL_REASONING_EFFORTS)
-
-    # String "none" is a real reasoning effort level. Python None / empty / off
-    # still mean that the effort field should be omitted.
-    litellm_transport.NO_REASONING_EFFORT_ALIASES.discard("none")
-
     transport_cls = litellm_transport.LiteLLMTransport
     current = transport_cls.__post_init__
     if getattr(current, _PATCH_MARKER, False):
@@ -82,6 +76,8 @@ def install_transport_compat() -> None:
             return
 
         slug = _openrouter_model_slug(self.model, kwargs)
+        kwargs["a0_responses_reasoning_efforts"] = sorted(ALL_REASONING_EFFORTS)
+        kwargs["a0_responses_none_is_reasoning_effort"] = True
         mode = openrouter_prompt_cache_mode(self.model, kwargs)
         explicit_caching = litellm_transport._coerce_bool(
             kwargs.get("a0_explicit_prompt_caching", False),

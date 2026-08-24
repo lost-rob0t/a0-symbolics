@@ -1,0 +1,9 @@
+name: _prolog_rlm
+title: Prolog-RLM Runtime
+description: Runs the stable Prolog-RLM context, completion, supervision, authority, effect, graph, artifact, spec, MCP, and trace semantics through a typed bridge.
+version: 0.2.0
+settings_sections:
+  - agent
+per_project_config: true
+per_agent_config: true
+always_enabled: false

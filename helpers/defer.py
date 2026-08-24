@@ -87,6 +87,10 @@ class DeferredTask:
     ):
         self.event_loop_thread = EventLoopThread(thread_name)
         self._future: Optional[Future] = None
+        self._discard_future_when_done = False
+        self._settled = threading.Event()
+        self._async_task: asyncio.Task | None = None
+        self._generation = 0
         self.children: list[ChildTask] = []
         self.func: Optional[Callable[..., Coroutine[Any, Any, Any]]] = None
         self.args: tuple[Any, ...] = ()
@@ -108,8 +112,12 @@ class DeferredTask:
         if self.func is None:
             raise RuntimeError("Task callable is no longer available")
 
+        self._discard_future_when_done = False
+        self._settled.clear()
+        self._generation += 1
+        generation = self._generation
         self._future = self.event_loop_thread.run_coroutine(
-            self._run(self.func, self.args, self.kwargs)
+            self._run(generation, self.func, self.args, self.kwargs)
         )
         if self._future:
             self._future.add_done_callback(self._on_task_done)
@@ -119,18 +127,48 @@ class DeferredTask:
         if future is self._future:
             self.kill_children()
             self._clear_call()
+            if self._discard_future_when_done:
+                self._future = None
+                self._discard_future_when_done = False
 
     def _clear_call(self) -> None:
         self.func = None
         self.args = ()
         self.kwargs = {}
 
-    @staticmethod
-    async def _run(func, args, kwargs):
-        return await func(*args, **kwargs)
+    async def _run(self, generation, func, args, kwargs):
+        current = asyncio.current_task()
+        if current is not None:
+            self._async_task = current
+            current.add_done_callback(
+                lambda task: self._on_async_task_done(task, generation)
+            )
+        try:
+            return await func(*args, **kwargs)
+        finally:
+            current = None
+            func = None
+            args = ()
+            kwargs = {}
+
+    def _on_async_task_done(self, task: asyncio.Task, generation: int) -> None:
+        if task is not self._async_task or generation != self._generation:
+            return
+        self._async_task = None
+        self._clear_call()
+        task.get_loop().call_soon(self._mark_settled, generation)
+
+    def _mark_settled(self, generation: int) -> None:
+        if generation == self._generation and self._async_task is None:
+            self._settled.set()
 
     def is_ready(self) -> bool:
         return self._future.done() if self._future else False
+
+    def wait_finished(self, timeout: Optional[float] = None) -> bool:
+        """Wait until the event-loop task has actually left its coroutine."""
+
+        return self._settled.wait(timeout)
 
     def result_sync(self, timeout: Optional[float] = None) -> Any:
         if not self._future:
@@ -164,6 +202,7 @@ class DeferredTask:
         """Kill the task and optionally terminate its thread."""
         self.kill_children()
         if self._future and not self._future.done():
+            self._discard_future_when_done = True
             self._future.cancel()
         self._clear_call()
 

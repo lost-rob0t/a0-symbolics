@@ -46,7 +46,7 @@
               :disabled="$store.editor.loading || $store.editor.saving"
               @click="$store.editor.runNewMenuAction('open')"
             >
-              <span class="material-symbols-outlined" aria-hidden="true">folder_open</span>
+              <x-icon aria-hidden="true" name="folder_open"></x-icon>
             </button>
             <button
               type="button"
@@ -670,12 +670,12 @@
       opacity: 0.42;
     }
 
-    .editor-tab-close .material-symbols-outlined {
+    .editor-tab-close x-icon {
       font-size: 1rem;
       line-height: 1;
     }
 
-    .editor-new-tab .material-symbols-outlined {
+    .editor-new-tab x-icon {
       font-size: 1.12rem;
       line-height: 1;
     }

@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -82,7 +83,9 @@ def test_welcome_screen_embeds_shared_new_chat_composer() -> None:
     assert "discovery-account-card" in discovery_cards
     assert "topHeroCards" not in discovery_cards
     assert "bottomHeroCards" not in discovery_cards
-    assert "background: var(--color-background);" in welcome
+    container_style = re.search(r"\.welcome-container\s*\{(?P<body>[^}]*)\}", welcome)
+    assert container_style is not None
+    assert "background:" not in container_style.group("body")
     assert "radial-gradient" not in welcome
 
 
