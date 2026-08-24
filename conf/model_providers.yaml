@@ -198,7 +198,7 @@ chat:
     models_list:
       endpoint_url: "https://openrouter.ai/api/v1/models"
     kwargs:
-      a0_api_mode: chat
+      a0_api_mode: responses
       extra_headers:
         "HTTP-Referer": "https://agent-zero.ai/"
         "X-Title": "Agent Zero"

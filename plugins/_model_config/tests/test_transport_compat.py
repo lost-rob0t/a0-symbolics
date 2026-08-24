@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import yaml
+
 from helpers import litellm_transport
 from plugins._model_config.helpers import transport_compat as compat
 
@@ -34,6 +38,15 @@ def _transport(
         ],
         kwargs=kwargs or {},
     )
+
+
+def test_openrouter_provider_defaults_to_responses():
+    project_root = Path(__file__).resolve().parents[3]
+    providers = yaml.safe_load(
+        (project_root / "conf" / "model_providers.yaml").read_text()
+    )
+
+    assert providers["chat"]["openrouter"]["kwargs"]["a0_api_mode"] == "responses"
 
 
 def test_all_reasoning_efforts_pass_through_unchanged():

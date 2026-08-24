@@ -84,7 +84,7 @@ def test_system_jobs_webui_skill_and_tool_prompt_are_present():
         plugin_root
         / "extensions"
         / "webui"
-        / "_sidebar-quick-actions-main-start"
+        / "sidebar-quick-actions-main-start"
         / "system-jobs-entry.html"
     ).read_text()
     skill = (plugin_root / "skills" / "system-jobs" / "SKILL.md").read_text()
