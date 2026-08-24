@@ -17,13 +17,17 @@ at once.
 Raw/source checkouts default to `native` unless configured otherwise. The Nix
 `a0-symbolics` application and development shell set `A0_SYMBOLICS_MODE=rlm` by
 default because those environments also install and expose the pinned
-Prolog-RLM package. Set the mode explicitly in plugin config:
+Prolog-RLM package.
+
+The mode can be selected in the `_symbolics` plugin settings or explicitly in
+plugin config:
 
 ```yaml
 mode: rlm
 ```
 
-or with the process environment override:
+The saved setting is applied during the next process startup. Deployments may
+override it with:
 
 ```sh
 A0_SYMBOLICS_MODE=rlm
@@ -35,8 +39,14 @@ missing.
 
 The managed RLM plugins ship disabled at the bundled-root level so native mode
 is clean even before startup extensions run. During startup the coordinator
-synchronizes their global activation to the selected mode. It changes plugin
-activation only; no Prolog policy is duplicated in Python.
+synchronizes their global activation to the selected mode. The transition is
+transactional: if a plugin toggle fails, the coordinator reconciles every
+managed plugin back to the original activation snapshot and reports incomplete
+rollback explicitly. It changes plugin activation only; no Prolog policy is
+duplicated in Python.
 
-The packaged RLM default is accepted only when the exact candidate head passes
-the Symbolics RLM workflow, including both plugin suites and `nix flake check`.
+The Nix integration gate exercises mode transitions from the same writable
+runtime layout used by the packaged launcher, proving that toggle state lands
+under persistent `usr/` rather than the read-only Nix store. The workflow also
+requires the committed `flake.lock` to match the exact pinned Prolog-RLM input
+before bridge tests or `nix flake check` can pass.
