@@ -57,14 +57,12 @@ def sync_runtime_mode(config: dict[str, Any] | None = None) -> str:
         for plugin_name, meta in metadata.items()
         if meta is not None
     }
-    changed: list[str] = []
 
     try:
         for plugin_name, state in original_states.items():
             if state == desired_state:
                 continue
             plugins.toggle_plugin(plugin_name, enable_rlm)
-            changed.append(plugin_name)
 
         mismatched = [
             plugin_name
@@ -76,13 +74,25 @@ def sync_runtime_mode(config: dict[str, Any] | None = None) -> str:
                 "Symbolics runtime mode transition did not converge for: "
                 + ", ".join(mismatched)
             )
-    except Exception:
-        for plugin_name in reversed(changed):
-            original_enabled = original_states[plugin_name] == "enabled"
+    except Exception as transition_error:
+        rollback_errors: list[str] = []
+        for plugin_name in reversed(tuple(original_states)):
+            original_state = original_states[plugin_name]
             try:
-                plugins.toggle_plugin(plugin_name, original_enabled)
-            except Exception:
-                pass
+                if plugins.get_toggle_state(plugin_name) == original_state:
+                    continue
+                plugins.toggle_plugin(
+                    plugin_name,
+                    original_state == "enabled",
+                )
+            except Exception as rollback_error:
+                rollback_errors.append(f"{plugin_name}: {rollback_error}")
+
+        if rollback_errors:
+            raise RuntimeError(
+                "Symbolics runtime mode transition failed and rollback was incomplete: "
+                + "; ".join(rollback_errors)
+            ) from transition_error
         raise
 
     return selected_mode
