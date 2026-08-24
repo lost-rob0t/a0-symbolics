@@ -81,7 +81,7 @@ private fun isLoopback(raw: String): Boolean = runCatching {
 
 @Composable
 internal fun SetupScreen(onConnect: (String) -> Unit) {
-    var raw by remember { mutableStateOf("") }
+    var raw by remember { mutableStateOf(DEFAULT_SERVER_URL) }
     var error by remember { mutableStateOf<String?>(null) }
     val loopback = remember(raw) { isLoopback(raw) }
 
@@ -197,7 +197,7 @@ internal fun SetupScreen(onConnect: (String) -> Unit) {
                         error = null
                     },
                     label = { Text("Server URL") },
-                    placeholder = { Text("http://127.0.0.1:5080") },
+                    placeholder = { Text(DEFAULT_SERVER_URL) },
                     supportingText = error?.let { msg -> { Text(msg) } },
                     isError = error != null,
                     singleLine = true,
