@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -21,6 +22,12 @@ def _iter_prompt_files():
 
 async def _build_system_text(profile: str = "agent0", rendered: bool = False) -> str:
     old_args = dict(runtime.args)
+    old_prolog_env = {
+        name: os.environ.get(name)
+        for name in ("PROLOG_RLM_ENABLED", "PROLOG_RLM_ROOT")
+    }
+    os.environ.pop("PROLOG_RLM_ENABLED", None)
+    os.environ.pop("PROLOG_RLM_ROOT", None)
     runtime.args.clear()
     runtime.args["dockerized"] = "true"
 
@@ -43,6 +50,11 @@ async def _build_system_text(profile: str = "agent0", rendered: bool = False) ->
         AgentContext.remove(ctx.id)
         runtime.args.clear()
         runtime.args.update(old_args)
+        for name, value in old_prolog_env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 @pytest.mark.asyncio
@@ -57,17 +69,21 @@ async def test_default_agent0_prompt_budget_and_guardrails():
     # surface plus skill metadata. Keep the guardrail close to the observed
     # budget so prompt creep remains visible without pretending this surface is
     # a tiny single-tool prompt.
-    assert tokens.approximate_tokens(system_text) <= 10000
+    assert tokens.approximate_tokens(system_text) <= 8500
     assert "`tool_name` must be one listed tool name" in system_text
     assert "- tool_args: key value pairs tool arguments" in system_text
-    assert '"tool_name": "call_subordinate"' in system_text
-    assert '"tool_name": "parallel"' in system_text
+    assert "### call_subordinate" in system_text
+    assert "### parallel" in system_text
     assert "Each `tool_calls` item is a normal tool request object" in system_text
-    assert '"reset": true' in system_text
-    assert '"tool_name": "text_editor"' in system_text
-    assert '"action": "read"' in system_text
-    assert '"tool_name": "code_execution_tool"' in system_text
-    assert '"tool_name": "memory_load"' in system_text
+    assert "`reset`: use json boolean `true`" in system_text
+    assert "### text_editor" in system_text
+    assert "actions: read write patch" in system_text
+    assert "### code_execution_tool" in system_text
+    assert "### exec" in system_text
+    assert "### git" in system_text
+    assert "### patch" in system_text
+    assert "Input schema for tool_args:" not in system_text
+    assert "`memory_load`: search stored memories" in system_text
     assert "informative but tight" in system_text
     assert "Your actual output starts with `{` and ends with `}`" in system_text
     assert "~~~json" in communication_prompt
@@ -114,6 +130,29 @@ After
     assert "~~~json" not in rendered
     assert '{"tool_name":"response"' in rendered
     assert '~~~python\nprint("keep me fenced")\n~~~' in rendered
+
+
+def test_remove_fenced_blocks_drops_only_complete_json_examples():
+    from helpers import files
+
+    prompt = """Callable prose
+~~~json
+{"tool_name":"response"}
+~~~
+~~~python
+print("keep")
+~~~
+unfinished
+```json
+keep this because the fence is incomplete
+"""
+
+    rendered = files.remove_fenced_blocks(prompt, "json")
+
+    assert "Callable prose" in rendered
+    assert '"tool_name"' not in rendered
+    assert '~~~python\nprint("keep")\n~~~' in rendered
+    assert "keep this because the fence is incomplete" in rendered
 
 
 @pytest.mark.asyncio

@@ -17,6 +17,7 @@
 - Preserve ordering prefixes where exception handling, watchdog registration, or cleanup depends on them.
 - Hooks that mirror persisted AI responses into UI logs must reuse existing stream log items and avoid duplicating live response-tool logs.
 - Recovery-loop circuit breakers must stop at the General Settings limit and render their user-visible cost warning from a core framework prompt.
+- The local-tool prompt post-hook removes complete fenced JSON examples only after availability plugins have added or removed their tool stubs. Keep callable prose, argument contracts, non-JSON fences, and incomplete fences intact.
 
 ## Work Guidance
 

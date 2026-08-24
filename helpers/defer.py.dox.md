@@ -18,6 +18,7 @@
 - `DeferredTask` (no explicit base class)
   - `start_task(self, func: Callable[..., Coroutine[Any, Any, Any]], *args, **kwargs)`
   - `is_ready(self) -> bool`
+  - `wait_finished(self, timeout: Optional[float]=...) -> bool`
   - `result_sync(self, timeout: Optional[float]=...) -> Any`
   - `async result(self, timeout: Optional[float]=...) -> Any`
   - `kill(self, terminate_thread: bool=...) -> None`
@@ -30,7 +31,8 @@
 
 - Helper modules own reusable framework APIs and must preserve public callers unless all callers, tests, and docs are updated together.
 - `DeferredTask` retains its callable and arguments only while an invocation is active; completion and `kill()` clear those references after the running coroutine has taken its own snapshot.
-- Task results remain available after completion. `restart()` can restart an active invocation, but a completed invocation has no retained call recipe and must be started again explicitly.
+- Task results remain available after ordinary completion. A killed invocation drops its completed future after cancellation cleanup so coroutine frames cannot retain arguments. `restart()` can restart an active invocation, but a completed invocation has no retained call recipe and must be started again explicitly.
+- Cross-thread future cancellation is only a request; `wait_finished()` observes generation-fenced event-loop settlement after the coroutine and its completion callback have exited. The coroutine clears its self-reference before settlement; Python may still leave an unreachable cancellation-traceback cycle for normal cyclic garbage collection, but the task must retain no reachable argument reference. An older cancelled generation must never clear or settle a restarted invocation.
 - Update this file whenever public functions, classes, persistence behavior, path/security assumptions, side effects, or cross-module contracts change.
 - Observed side-effect areas: scheduler state.
 - Imported dependency areas include: `asyncio`, `concurrent.futures`, `dataclasses`, `threading`, `typing`.
@@ -50,6 +52,7 @@
 
 - Run targeted tests for changed helper behavior; run security regressions for auth, filesystem, WebSocket, tunnel, upload, or secret-handling helpers.
 - Related tests observed by source search:
+  - `tests/test_defer_lifecycle.py`
   - `tests/test_office_document_store.py`
 
 ## Child DOX Index

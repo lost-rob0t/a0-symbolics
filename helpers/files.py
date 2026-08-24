@@ -454,6 +454,16 @@ def remove_code_fences(text, language: str | None = None):
     return result
 
 
+def remove_fenced_blocks(text: str, language: str) -> str:
+    """Remove complete fenced blocks for one language, including their contents."""
+
+    pattern = (
+        rf"(?ims)^[ \t]*(```|~~~)[ \t]*{re.escape(language)}[ \t]*\r?\n"
+        r".*?^[ \t]*\1[ \t]*\r?$"
+    )
+    return re.sub(pattern, "", text).strip()
+
+
 def is_full_json_template(text):
     # Pattern to match the entire text enclosed in ```json or ~~~json fences
     pattern = r"^\s*(```|~~~)\s*json\s*\n(.*?)\n\1\s*$"

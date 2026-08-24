@@ -275,7 +275,9 @@ class WsHandler:
         *,
         correlation_id: str | None = None,
     ) -> None:
-        await self.manager.emit_to(
+        if self._manager is None:
+            return
+        await self._manager.emit_to(
             self._namespace, sid, event, data,
             handler_id=self.identifier,
             correlation_id=correlation_id,

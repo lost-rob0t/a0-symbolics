@@ -709,6 +709,11 @@ class ResponsesTransport:
         request = dict(kwargs)
         response_function_tools = request.pop("a0_responses_function_tools", None)
         response_builtin_tools = request.pop("responses_builtin_tools", None)
+        reasoning_efforts = request.pop("a0_responses_reasoning_efforts", None)
+        none_is_reasoning_effort = _coerce_bool(
+            request.pop("a0_responses_none_is_reasoning_effort", False),
+            default=False,
+        )
         _drop_responses_only_kwargs(request)
         _drop_legacy_transport_kwargs(request)
         request.pop("stop", None)
@@ -720,9 +725,23 @@ class ResponsesTransport:
 
         reasoning_effort = request.pop("reasoning_effort", None)
         if "reasoning" in request:
-            request["reasoning"] = cls.normalize_reasoning(request["reasoning"])
+            normalized_reasoning = cls.normalize_reasoning(
+                request["reasoning"],
+                supported_efforts=reasoning_efforts,
+                none_is_effort=none_is_reasoning_effort,
+            )
+            if normalized_reasoning is None:
+                request.pop("reasoning", None)
+            else:
+                request["reasoning"] = normalized_reasoning
         elif reasoning_effort is not None:
-            request["reasoning"] = cls.normalize_reasoning(reasoning_effort)
+            normalized_reasoning = cls.normalize_reasoning(
+                reasoning_effort,
+                supported_efforts=reasoning_efforts,
+                none_is_effort=none_is_reasoning_effort,
+            )
+            if normalized_reasoning is not None:
+                request["reasoning"] = normalized_reasoning
 
         response_format = request.pop("response_format", None)
         if response_format is not None:
@@ -1037,11 +1056,20 @@ class ResponsesTransport:
         return response_format, None
 
     @staticmethod
-    def normalize_reasoning(reasoning: Any) -> Any:
+    def normalize_reasoning(
+        reasoning: Any,
+        *,
+        supported_efforts: Any = None,
+        none_is_effort: bool = False,
+    ) -> Any:
         if isinstance(reasoning, dict):
             normalized = dict(reasoning)
             if "effort" in normalized:
-                effort = _normalize_reasoning_effort(normalized.get("effort"))
+                effort = _normalize_reasoning_effort(
+                    normalized.get("effort"),
+                    supported_efforts=supported_efforts,
+                    none_is_effort=none_is_effort,
+                )
                 if effort is None:
                     normalized.pop("effort", None)
                 else:
@@ -1049,7 +1077,11 @@ class ResponsesTransport:
             return normalized or None
         if reasoning is None:
             return None
-        effort = _normalize_reasoning_effort(reasoning)
+        effort = _normalize_reasoning_effort(
+            reasoning,
+            supported_efforts=supported_efforts,
+            none_is_effort=none_is_effort,
+        )
         return {"effort": effort} if effort is not None else None
 
     @classmethod
@@ -1345,6 +1377,8 @@ def _drop_internal_transport_kwargs(kwargs: dict[str, Any]) -> None:
     _drop_legacy_transport_kwargs(kwargs)
     kwargs.pop("a0_explicit_prompt_caching", None)
     kwargs.pop("a0_responses_function_tools", None)
+    kwargs.pop("a0_responses_reasoning_efforts", None)
+    kwargs.pop("a0_responses_none_is_reasoning_effort", None)
     kwargs.pop("responses_builtin_tools", None)
     _drop_responses_only_kwargs(kwargs)
 
@@ -1699,15 +1733,26 @@ def _object_to_dict(obj: Any) -> dict[str, Any]:
     return {}
 
 
-def _normalize_reasoning_effort(effort: Any) -> str | None:
+def _normalize_reasoning_effort(
+    effort: Any,
+    *,
+    supported_efforts: Any = None,
+    none_is_effort: bool = False,
+) -> str | None:
     if isinstance(effort, str):
         normalized = effort.strip().lower()
     else:
         normalized = str(effort).strip().lower() if effort is not None else ""
-    if normalized in RESPONSES_REASONING_EFFORTS:
+    supported = {
+        str(value).strip().lower()
+        for value in (supported_efforts or RESPONSES_REASONING_EFFORTS)
+    }
+    if normalized == "none" and none_is_effort and normalized in supported:
         return normalized
     if normalized in NO_REASONING_EFFORT_ALIASES:
         return None
+    if normalized in supported:
+        return normalized
     return RESPONSES_REASONING_FALLBACK_EFFORT
 
 

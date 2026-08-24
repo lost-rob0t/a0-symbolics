@@ -25,6 +25,8 @@
 - Keep provider selection and provider-specific defaults outside this helper; callers pass a resolved LiteLLM model name and kwargs.
 - Strip Agent Zero internal kwargs before sending requests to LiteLLM.
 - Do not send orphan tool controls when no tools are present; strict OpenAI-compatible servers can reject empty `tools` arrays.
+- Omit `reasoning` entirely when explicit reasoning settings normalize to disabled; do not send a JSON null to strict Responses endpoints.
+- Treat provider-specific reasoning-effort vocabularies as request-scoped transport metadata and strip that metadata before LiteLLM. Importing a provider plugin must not mutate process-global reasoning aliases or change unrelated providers by test/import order.
 - When Agent Zero function tools are present, default Responses requests to one required native call; explicit request-level `tool_choice` and `parallel_tool_calls` values still win.
 - Normalize function tool parameter schemas with an explicit object `properties` field before Responses requests so OpenAI-compatible chat backends reached through LiteLLM can validate them.
 - Prefer Responses API when configured, but fallback to Chat Completions when the provider does not support Responses.
