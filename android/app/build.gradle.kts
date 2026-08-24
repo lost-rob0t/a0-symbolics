@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "io.github.lostrobot.a0symbolics"
-    compileSdk = 37
+    compileSdk = 36
     defaultConfig {
         applicationId = "io.github.lostrobot.a0symbolics"
         minSdk = 26
@@ -22,7 +22,9 @@ android {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
+    // Compose 1.12 requires compileSdk 37. Keep the June BOM so CI can build
+    // against the stable Android 16 / API 36 SDK while targetSdk remains 36.
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
     implementation(composeBom)
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.core:core-ktx:1.19.0")
