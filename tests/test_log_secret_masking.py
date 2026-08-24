@@ -39,6 +39,31 @@ def test_mask_values_failure_never_returns_original_nested_secret(monkeypatch):
     assert SECRET not in str(masked)
 
 
+def test_leaf_masking_failure_redacts_only_failed_leaf(monkeypatch):
+    class SelectivelyBrokenSecretsManager:
+        def mask_values(self, value):
+            if value == SECRET:
+                raise RuntimeError("synthetic masking failure")
+            return value
+
+    monkeypatch.setattr(
+        log_module,
+        "get_secrets_manager",
+        lambda _context: SelectivelyBrokenSecretsManager(),
+    )
+
+    payload = {
+        "safe": "ordinary value",
+        "nested": [SECRET, {"safe": "still ordinary"}],
+    }
+    masked = Log()._mask_recursive(payload)
+
+    assert masked["safe"] == "ordinary value"
+    assert masked["nested"][1]["safe"] == "still ordinary"
+    assert masked["nested"][0] != SECRET
+    assert SECRET not in str(masked)
+
+
 def test_log_item_output_never_contains_secret_when_masking_fails(monkeypatch):
     class BrokenSecretsManager:
         def mask_values(self, _value):
@@ -58,3 +83,20 @@ def test_log_item_output_never_contains_secret_when_masking_fails(monkeypatch):
     )
 
     assert SECRET not in str(item.output())
+
+
+def test_progress_never_contains_secret_when_masking_fails(monkeypatch):
+    class BrokenSecretsManager:
+        def mask_values(self, _value):
+            raise RuntimeError("synthetic masking failure")
+
+    monkeypatch.setattr(
+        log_module,
+        "get_secrets_manager",
+        lambda _context: BrokenSecretsManager(),
+    )
+
+    log = Log()
+    log.set_progress(f"progress {SECRET}")
+
+    assert SECRET not in log.progress
