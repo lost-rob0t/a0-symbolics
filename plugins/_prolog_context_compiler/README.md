@@ -8,7 +8,7 @@ execution.
 
 `helpers.catalog.register_permanent_tools(...)` is the code-owned adapter API
 for essential tools. Permanent declarations are sent as inert metadata; the
-public `rlm_agent_zero_adapter` module in Prolog-RLM owns their explicit
+public `adaptors/rlm_agent_zero_adapter` module in Prolog-RLM owns their explicit
 selection and packing semantics. The default permanent set keeps final
 response, editing, code execution, delegation, input, wait, skill loading, and
 the full RLM facade visible whenever those tools are actually registered and
