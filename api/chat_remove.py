@@ -7,7 +7,10 @@ from helpers.task_scheduler import TaskScheduler
 
 class RemoveChat(ApiHandler):
     async def process(self, input: Input, request: Request) -> Output:
-        ctxid = validate_context_id(input.get("context", ""))
+        try:
+            ctxid = validate_context_id(input.get("context", ""))
+        except ValueError as error:
+            return Response(str(error), status=400, mimetype="text/plain")
 
         scheduler = TaskScheduler.get()
         scheduler.cancel_tasks_by_context(ctxid, terminate_thread=True)
