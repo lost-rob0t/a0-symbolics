@@ -71,14 +71,14 @@ def test_sync_rlm_fails_before_mutation_when_plugin_is_missing(monkeypatch):
     assert calls == []
 
 
-def test_sync_rolls_back_partial_transition(monkeypatch):
+def test_sync_rolls_back_partial_transition_even_if_toggle_raises_after_write(monkeypatch):
     states, calls = _fake_activation(
         monkeypatch,
         "disabled",
-        fail_on=("_prolog_context_compiler", True),
+        fail_after_write=("_prolog_context_compiler", True),
     )
 
-    with pytest.raises(RuntimeError, match="synthetic toggle failure"):
+    with pytest.raises(RuntimeError, match="synthetic post-write toggle failure"):
         mode.sync_runtime_mode({"mode": "rlm"})
 
     assert states == {
@@ -88,11 +88,12 @@ def test_sync_rolls_back_partial_transition(monkeypatch):
     assert calls == [
         ("_prolog_rlm", True),
         ("_prolog_context_compiler", True),
+        ("_prolog_context_compiler", False),
         ("_prolog_rlm", False),
     ]
 
 
-def _fake_activation(monkeypatch, initial_state, fail_on=None):
+def _fake_activation(monkeypatch, initial_state, fail_after_write=None):
     from helpers import plugins
 
     monkeypatch.delenv("A0_SYMBOLICS_MODE", raising=False)
@@ -104,9 +105,9 @@ def _fake_activation(monkeypatch, initial_state, fail_on=None):
 
     def toggle(name, enabled):
         calls.append((name, enabled))
-        if fail_on == (name, enabled):
-            raise RuntimeError("synthetic toggle failure")
         states[name] = "enabled" if enabled else "disabled"
+        if fail_after_write == (name, enabled):
+            raise RuntimeError("synthetic post-write toggle failure")
 
     monkeypatch.setattr(plugins, "toggle_plugin", toggle)
     return states, calls
