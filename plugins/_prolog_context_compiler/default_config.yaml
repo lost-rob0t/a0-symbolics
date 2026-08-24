@@ -1,5 +1,5 @@
 prolog_rlm_root: ""
-enabled: false
+enabled: true
 compile_timeout_seconds: 2.0
 max_request_bytes: 2000000
 max_response_bytes: 4000000
