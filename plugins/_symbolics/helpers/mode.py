@@ -32,27 +32,57 @@ def sync_runtime_mode(config: dict[str, Any] | None = None) -> str:
     """Synchronize the paired RLM plugins to the selected runtime mode.
 
     Native mode removes both plugins from Agent Zero's active plugin set.
-    RLM mode enables both as a single control plane.  This function changes
+    RLM mode enables both as a single control plane. This function changes
     activation only; symbolic policy remains owned by Prolog-RLM.
     """
 
     from helpers import plugins
 
-    mode = resolve_mode(config)
-    enable_rlm = mode == MODE_RLM
+    selected_mode = resolve_mode(config)
+    enable_rlm = selected_mode == MODE_RLM
     desired_state = "enabled" if enable_rlm else "disabled"
 
-    missing: list[str] = []
-    for plugin_name in MANAGED_PLUGINS:
-        if plugins.get_plugin_meta(plugin_name) is None:
-            missing.append(plugin_name)
-            continue
-        if plugins.get_toggle_state(plugin_name) != desired_state:
-            plugins.toggle_plugin(plugin_name, enable_rlm)
-
+    metadata = {
+        plugin_name: plugins.get_plugin_meta(plugin_name)
+        for plugin_name in MANAGED_PLUGINS
+    }
+    missing = [name for name, meta in metadata.items() if meta is None]
     if enable_rlm and missing:
         raise RuntimeError(
             "Symbolics RLM mode requires bundled plugins: " + ", ".join(missing)
         )
 
-    return mode
+    original_states = {
+        plugin_name: plugins.get_toggle_state(plugin_name)
+        for plugin_name, meta in metadata.items()
+        if meta is not None
+    }
+    changed: list[str] = []
+
+    try:
+        for plugin_name, state in original_states.items():
+            if state == desired_state:
+                continue
+            plugins.toggle_plugin(plugin_name, enable_rlm)
+            changed.append(plugin_name)
+
+        mismatched = [
+            plugin_name
+            for plugin_name in original_states
+            if plugins.get_toggle_state(plugin_name) != desired_state
+        ]
+        if mismatched:
+            raise RuntimeError(
+                "Symbolics runtime mode transition did not converge for: "
+                + ", ".join(mismatched)
+            )
+    except Exception:
+        for plugin_name in reversed(changed):
+            original_enabled = original_states[plugin_name] == "enabled"
+            try:
+                plugins.toggle_plugin(plugin_name, original_enabled)
+            except Exception:
+                pass
+        raise
+
+    return selected_mode
