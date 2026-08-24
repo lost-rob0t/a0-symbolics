@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 
 private const val PREFS = "a0_android"
 private const val KEY_URL = "server_url"
+internal const val DEFAULT_SERVER_URL = "http://127.0.0.1:5080"
 
 private val AgentZeroDarkColors = darkColorScheme(
     primary = Color(0xFF9B87F5),
@@ -52,7 +53,10 @@ class MainActivity : ComponentActivity() {
 private fun AgentZeroApp() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
-    var server by remember { mutableStateOf(prefs.getString(KEY_URL, null)) }
+    var server by remember {
+        mutableStateOf<String?>(prefs.getString(KEY_URL, null) ?: DEFAULT_SERVER_URL)
+    }
+
     if (server == null) {
         SetupScreen { url ->
             prefs.edit().putString(KEY_URL, url).apply()
