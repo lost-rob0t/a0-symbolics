@@ -49,7 +49,7 @@
               ln -sfn "$state_dir/usr" "$runtime_root/usr"
               ln -sfn "$state_dir/tmp" "$runtime_root/tmp"
               export TMPDIR="$state_dir/tmp"
-              export PROLOG_RLM_ENABLED="''${PROLOG_RLM_ENABLED:-1}"
+              export A0_SYMBOLICS_MODE="''${A0_SYMBOLICS_MODE:-rlm}"
               export SWIPL_PACK_PATH="${prologRlm}/share/swi-prolog/pack''${SWIPL_PACK_PATH:+:$SWIPL_PACK_PATH}"
               cd "$runtime_root"
               exec ${python}/bin/python "$source_root/run_ui.py" "$@"
@@ -78,7 +78,7 @@
         in {
           default = pkgs.mkShell {
             packages = [ python pkgs.swi-prolog prologRlm ];
-            PROLOG_RLM_ENABLED = "1";
+            A0_SYMBOLICS_MODE = "rlm";
             SWIPL_PACK_PATH = "${prologRlm}/share/swi-prolog/pack";
           };
         });
@@ -104,13 +104,16 @@
             nativeBuildInputs = [ python pkgs.swi-prolog prologRlm ];
           } ''
             export HOME="$TMPDIR/home"
-            export PROLOG_RLM_ENABLED=1
+            export A0_SYMBOLICS_MODE=rlm
             export SWIPL_PACK_PATH="${prologRlm}/share/swi-prolog/pack"
             mkdir -p "$HOME" "$TMPDIR/usr" "$TMPDIR/tmp"
             cd "${source}/share/a0-symbolics"
             ${python}/bin/python - <<'PY'
             from plugins._prolog_context_compiler.helpers.bridge import PrologContextBridge
             from plugins._prolog_rlm.helpers.bridge import PrologRuntimeBridge
+            from plugins._symbolics.helpers.mode import resolve_mode
+
+            assert resolve_mode({"mode": "native"}) == "rlm"
 
             context = PrologContextBridge(timeout=10.0)
             try:
