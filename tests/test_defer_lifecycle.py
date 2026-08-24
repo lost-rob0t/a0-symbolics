@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+import gc
 import subprocess
 import sys
 import threading
@@ -152,6 +153,8 @@ def test_kill_clears_stored_call_without_clearing_running_arguments():
         try:
             await asyncio.Future()
         except asyncio.CancelledError:
+            if captured_owner is None:
+                raise AssertionError("running task lost its argument during cancellation")
             cancelled.set()
             await release[0].wait()
         finally:
@@ -167,12 +170,10 @@ def test_kill_clears_stored_call_without_clearing_running_arguments():
         assert task.kwargs == {}
 
         del owner
-        assert owner_ref() is not None
         task.event_loop_thread.loop.call_soon_threadsafe(release[0].set)
         assert finished.wait(2)
-        asyncio.run_coroutine_threadsafe(
-            asyncio.sleep(0), task.event_loop_thread.loop
-        ).result(2)
+        assert task.wait_finished(2)
+        gc.collect()
         assert owner_ref() is None
     finally:
         if release and task.event_loop_thread.loop:

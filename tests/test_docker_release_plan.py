@@ -49,6 +49,7 @@ def test_docker_publish_workflow_tracks_branch_promotions():
     assert "workflow_dispatch:" in content
     assert "inputs:" in content
     assert "tag:" in content
+    assert 'TARGET_TAG: ${{ matrix.source_tag }}' in content
     assert "SOURCE_REF_TYPE: ${{ github.ref_type }}" in content
     assert "BEFORE_SHA: ${{ github.event_name == 'push' && github.event.before || '' }}" in content
 

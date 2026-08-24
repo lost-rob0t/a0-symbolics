@@ -27,6 +27,8 @@
 - Validate internal `responses_history_context` against selected prepared local input, bind its stable-prefix digest to actual affinity/tool schemas, and project eligible groups through `responses_history`. Strip the control on every provider path and omit its digest from Chat/fallback result metadata.
 - Apply `responses_prompt_replacements` only to Responses input when generated A0 functions are present; preserve original Chat/fallback messages and strip this internal control before either provider call.
 - Do not send orphan tool controls when no tools are present; strict OpenAI-compatible servers can reject empty `tools` arrays.
+- Omit `reasoning` entirely when explicit reasoning settings normalize to disabled; do not send a JSON null to strict Responses endpoints.
+- Treat provider-specific reasoning-effort vocabularies as request-scoped transport metadata and strip that metadata before LiteLLM. Importing a provider plugin must not mutate process-global reasoning aliases or change unrelated providers by test/import order.
 - When Agent Zero function tools are present, default Responses requests to one required native call; explicit request-level `tool_choice` and `parallel_tool_calls` values still win.
 - Normalize function tool parameter schemas with an explicit object `properties` field before Responses requests so OpenAI-compatible chat backends reached through LiteLLM can validate them.
 - Default to Chat Completions; use Responses only when `a0_api_mode` explicitly selects it, with fallback to Chat Completions when unsupported.

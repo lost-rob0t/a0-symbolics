@@ -19,6 +19,7 @@
   guidance belongs in policy-filtered `agent.system.tool.*.md` prompts.
 - Discover local tool prompts through `helpers.subagents.get_paths` and apply
   `helpers.tool_policy` before including their text.
+- Keep callable prose and argument contracts provider-visible, but remove fenced JSON usage examples from the default local-tool catalog. Native schemas and the main communication contract already define the request shape; repeated per-tool examples are bounded discovery material, not permanent context.
 - Omit the discoverable-skills catalog when profile policy blocks
   `skills_tool`; loaded skill history remains independent.
 

@@ -34,6 +34,7 @@
 - `get_unique_filenames_in_dirs(dir_paths: list[str], pattern: str=..., type: Literal['file', 'dir', 'any']=...)`
 - `find_existing_paths_by_pattern(pattern: str)`
 - `remove_code_fences(text, language: str | None=...)`: Remove every code fence, or only fences for one language while preserving their contents.
+- `remove_fenced_blocks(text: str, language: str)`: Remove complete examples for one fenced language while preserving prose and all other fence types.
 - `is_full_json_template(text)`
 - `write_file(relative_path: str, content: str, encoding: str=...)`
 - `delete_file(relative_path: str)`

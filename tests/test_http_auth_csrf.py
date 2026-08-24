@@ -3,6 +3,7 @@ from __future__ import annotations
 from urllib.parse import parse_qs, urlsplit
 
 from flask import Flask, Response
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 

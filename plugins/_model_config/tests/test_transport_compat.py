@@ -50,10 +50,15 @@ def test_all_reasoning_efforts_pass_through_unchanged():
     }
 
     for effort in compat.ALL_REASONING_EFFORTS:
-        assert litellm_transport._normalize_reasoning_effort(effort) == effort
-        assert litellm_transport.ResponsesTransport.normalize_reasoning(effort) == {
-            "effort": effort
-        }
+        transport = _transport(
+            "openrouter/openai/gpt-5.6-luna",
+            kwargs={"reasoning_effort": effort},
+        )
+        request = transport._responses_request(stream=False)
+        assert request["reasoning"] == {"effort": effort}
+
+    assert litellm_transport._normalize_reasoning_effort("none") is None
+    assert litellm_transport._normalize_reasoning_effort("xhigh") == "high"
 
 
 def test_empty_and_disabled_reasoning_values_still_omit_effort():

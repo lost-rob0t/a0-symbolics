@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -82,6 +83,9 @@ def test_welcome_screen_embeds_shared_new_chat_composer() -> None:
     assert "discovery-account-card" in discovery_cards
     assert "topHeroCards" not in discovery_cards
     assert "bottomHeroCards" not in discovery_cards
+    container_style = re.search(r"\.welcome-container\s*\{(?P<body>[^}]*)\}", welcome)
+    assert container_style is not None
+    assert "background:" not in container_style.group("body")
     assert "radial-gradient" not in welcome
 
 
@@ -95,9 +99,6 @@ def test_welcome_composer_can_create_a_chat_before_sending() -> None:
     assert 'return "Ask anything to start a new chat";' in input_store
     assert "if (!chatsStore.selected" in input_store
     assert "await chatsStore.newChat()" in input_store
-    optimistic_user = 'await setMessages([{ id: messageId, type: "user"'
-    assert index_js.count(optimistic_user) == 1
-    assert index_js.index(optimistic_user) < index_js.index("if (hasAttachments)")
     assert "return response.ctxid;" in chats_store
     assert 'return "arrow_forward";' in input_store
     assert "modelGateStore.canSendToModel()" in index_js

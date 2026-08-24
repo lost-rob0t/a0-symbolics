@@ -1,0 +1,6 @@
+prolog_rlm_root: ""
+request_timeout_seconds: 45.0
+max_request_bytes: 2000000
+max_response_bytes: 4000000
+max_tool_result_chars: 50000
+openrouter_model: ""

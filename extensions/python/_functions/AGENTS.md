@@ -19,6 +19,7 @@
 - The `AgentContext.run_task/end` hook attaches integration callbacks to the returned `DeferredTask`; keep terminal side effects out of `agent.py`.
 - Recovery-loop circuit breakers must stop at the General Settings limit and render their user-visible cost warning from a core framework prompt.
 - Prompt settings snapshots must be task-local, accessed through `get_settings_for_prompt()`, and end with the matching `Agent.prepare_prompt` call, including exceptional exits.
+- The local-tool prompt post-hook removes complete fenced JSON examples only after availability plugins have added or removed their tool stubs. Keep callable prose, argument contracts, non-JSON fences, and incomplete fences intact.
 
 ## Work Guidance
 

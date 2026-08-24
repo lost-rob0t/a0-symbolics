@@ -11,7 +11,11 @@ from plugins._email_integration.helpers.imap_client import (
     disconnect_imap,
     get_highest_uid,
 )
-from plugins._email_integration.helpers.smtp_client import SmtpConfig, test_smtp, send_reply
+from plugins._email_integration.helpers.smtp_client import (
+    SmtpConfig,
+    send_reply,
+    test_smtp as run_smtp_test,
+)
 
 
 class TestConnection(ApiHandler):
@@ -86,7 +90,7 @@ class TestConnection(ApiHandler):
 
     async def _test_smtp(self, handler: dict, results: list[dict]):
         try:
-            error = await test_smtp(self._smtp_config(handler))
+            error = await run_smtp_test(self._smtp_config(handler))
             if error:
                 results.append({
                     "test": "Outgoing",

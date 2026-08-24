@@ -48,6 +48,7 @@
   through `WsManager.constrain_ack_response(...)` after security results are
   merged, so acknowledgements obey the same negotiated per-peer ceiling as
   ordinary emitted events.
+- Directly invoked handlers may be constructed without a manager; acknowledgement-returning operations still work and unsolicited emit helpers become no-ops until `bind_manager(...)` is called.
 - Observed side-effect areas: filesystem reads, filesystem deletion, network calls, WebSocket state, plugin state, settings/state persistence, secret handling.
 - Imported dependency areas include: `abc`, `dataclasses`, `flask`, `helpers`, `helpers.errors`, `helpers.network`, `helpers.print_style`, `os`, `pathlib`, `socketio`, `threading`, `typing`, `urllib.parse`, `uuid`.
 
