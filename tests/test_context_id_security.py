@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import threading
 from pathlib import Path
 
 import pytest
 
+from api.chat_create import CreateChat
+from api.chat_remove import RemoveChat
 from helpers import files, persist_chat
 from helpers.context_utils import validate_context_id
 
@@ -45,6 +49,34 @@ def test_chat_paths_reject_untrusted_context_ids(ctxid: str) -> None:
 
     with pytest.raises(ValueError, match="context id"):
         persist_chat.get_chat_msg_files_folder(ctxid)
+
+
+def test_chat_create_rejects_invalid_requested_id_before_side_effects(monkeypatch) -> None:
+    handler = CreateChat(None, threading.RLock())
+    monkeypatch.setattr(
+        handler,
+        "use_context",
+        lambda *_args, **_kwargs: pytest.fail("invalid ID reached context creation"),
+    )
+
+    response = asyncio.run(handler.process({"new_context": "../escape"}, None))
+
+    assert response.status_code == 400
+
+
+def test_chat_remove_rejects_invalid_id_before_side_effects(monkeypatch) -> None:
+    from helpers.task_scheduler import TaskScheduler
+
+    handler = RemoveChat(None, threading.RLock())
+    monkeypatch.setattr(
+        TaskScheduler,
+        "get",
+        lambda: pytest.fail("invalid ID reached destructive scheduler path"),
+    )
+
+    response = asyncio.run(handler.process({"context": "../escape"}, None))
+
+    assert response.status_code == 400
 
 
 def test_remove_chat_cannot_escape_chat_root(monkeypatch, tmp_path: Path) -> None:
