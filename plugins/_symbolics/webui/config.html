@@ -1,0 +1,33 @@
+<html>
+<head>
+    <title>Symbolics Runtime</title>
+</head>
+
+<body>
+    <div x-data>
+        <template x-if="config">
+            <div>
+                <div class="section-title">Symbolics Runtime</div>
+                <div class="section-description">
+                    Choose the Agent Zero control plane used on the next process start. The Nix package defaults to Prolog-RLM through A0_SYMBOLICS_MODE; a host environment override takes precedence over this saved setting.
+                </div>
+
+                <div class="field">
+                    <div class="field-label">
+                        <div class="field-title">Runtime mode</div>
+                        <div class="field-description">
+                            Native uses Agent Zero's stock prompt/context path. Prolog-RLM enables the runtime bridge and context compiler together as one symbolic control plane.
+                        </div>
+                    </div>
+                    <div class="field-control">
+                        <select x-model="config.mode">
+                            <option value="native">Native</option>
+                            <option value="rlm">Prolog-RLM</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</body>
+</html>
