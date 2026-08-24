@@ -5,6 +5,20 @@ from pathlib import Path
 import pytest
 
 from helpers import files, persist_chat
+from helpers.context_utils import validate_context_id
+
+
+@pytest.mark.parametrize(
+    "ctxid",
+    [
+        "Abc123",
+        "chat_01",
+        "550e8400-e29b-41d4-a716-446655440000",
+    ],
+)
+def test_valid_context_ids_remain_compatible(ctxid: str) -> None:
+    assert validate_context_id(ctxid) == ctxid
+    assert Path(persist_chat.get_chat_folder_path(ctxid)).name == ctxid
 
 
 @pytest.mark.parametrize(
@@ -22,7 +36,7 @@ from helpers import files, persist_chat
         "nul\x00id",
         "line\nbreak",
         "é",
-        "a" * 257,
+        "a" * 129,
     ],
 )
 def test_chat_paths_reject_untrusted_context_ids(ctxid: str) -> None:
@@ -59,3 +73,15 @@ def test_remove_message_files_cannot_escape_chat_root(monkeypatch, tmp_path: Pat
 
     assert sentinel.is_dir()
     assert marker.read_text(encoding="utf-8") == "must survive"
+
+
+def test_symlinked_chat_id_cannot_escape_chat_root(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(files, "_base_dir", str(tmp_path))
+    chats = tmp_path / "usr" / "chats"
+    outside = tmp_path / "outside"
+    chats.mkdir(parents=True)
+    outside.mkdir()
+    (chats / "safeid").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="outside chat storage"):
+        persist_chat.get_chat_folder_path("safeid")
