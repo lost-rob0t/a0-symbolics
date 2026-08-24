@@ -22,12 +22,13 @@ android {
 }
 
 dependencies {
-    // Compose 1.12 requires compileSdk 37. Keep the June BOM so CI can build
-    // against the stable Android 16 / API 36 SDK while targetSdk remains 36.
+    // Stay on the final API-36-compatible AndroidX generation. Compose 1.12
+    // and Core 1.18+ move their compile SDK beyond the Android 16 SDK that
+    // is currently available from sdkmanager on GitHub's hosted runner.
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
     implementation(composeBom)
-    implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.activity:activity-compose:1.12.4")
+    implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
