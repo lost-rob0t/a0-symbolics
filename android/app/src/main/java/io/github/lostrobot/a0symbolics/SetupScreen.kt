@@ -1,5 +1,6 @@
 package io.github.lostrobot.a0symbolics
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,13 +15,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,31 +36,46 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import java.net.URI
+import java.net.URL
 
 internal fun normalizeUrl(raw: String): Result<String> = runCatching {
-    val u = URI(raw.trim())
-    require(u.scheme == "http" || u.scheme == "https") { "Use http:// or https://" }
-    require(!u.host.isNullOrBlank()) { "Enter a valid host or IP" }
-    require(u.userInfo == null) { "Do not put credentials in the URL" }
-    URI(
-        u.scheme.lowercase(),
-        null,
-        u.host.lowercase(),
-        u.port,
-        u.path?.trimEnd('/')?.ifBlank { null },
-        null,
-        null,
-    ).toString().trimEnd('/')
+    val text = raw.trim()
+    require(text.isNotEmpty()) { "Enter an Agent Zero URL" }
+
+    val url = URL(text)
+    val scheme = url.protocol.lowercase()
+    require(scheme == "http" || scheme == "https") { "Use http:// or https://" }
+    require(url.userInfo == null) { "Do not put credentials in the URL" }
+
+    val host = url.host.trim()
+    require(host.isNotEmpty()) { "Enter a valid host or IP" }
+
+    val normalizedHost = host
+        .removePrefix("[")
+        .removeSuffix("]")
+        .lowercase()
+        .let { if (it.contains(':')) "[$it]" else it }
+    val port = if (url.port >= 0) ":${url.port}" else ""
+    val path = url.path.trimEnd('/').let { if (it == "/") "" else it }
+
+    "$scheme://$normalizedHost$port$path"
 }
 
 internal fun origin(url: String): String? = runCatching {
-    val u = URI(url)
-    "${u.scheme.lowercase()}://${u.host.lowercase()}${if (u.port >= 0) ":${u.port}" else ""}"
+    val parsed = URL(url)
+    val host = parsed.host
+        .removePrefix("[")
+        .removeSuffix("]")
+        .lowercase()
+        .let { if (it.contains(':')) "[$it]" else it }
+    "${parsed.protocol.lowercase()}://$host${if (parsed.port >= 0) ":${parsed.port}" else ""}"
 }.getOrNull()
 
 private fun isLoopback(raw: String): Boolean = runCatching {
-    val host = URI(raw.trim()).host?.lowercase() ?: return@runCatching false
+    val host = URL(raw.trim()).host
+        .removePrefix("[")
+        .removeSuffix("]")
+        .lowercase()
     host == "localhost" || host == "::1" || host.startsWith("127.")
 }.getOrDefault(false)
 
@@ -67,162 +84,211 @@ internal fun SetupScreen(onConnect: (String) -> Unit) {
     var raw by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val loopback = remember(raw) { isLoopback(raw) }
-    val background = Brush.verticalGradient(
-        listOf(
-            Color(0xFF121018),
-            MaterialTheme.colorScheme.background,
-            Color(0xFF07080B),
-        ),
-    )
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(background)
-            .statusBarsPadding()
-            .navigationBarsPadding(),
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 22.dp, vertical = 22.dp),
-            verticalArrangement = Arrangement.spacedBy(22.dp),
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                            Color.Transparent,
+                        ),
+                        radius = 900f,
+                    ),
+                ),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp, vertical = 22.dp),
             ) {
-                Surface(
-                    modifier = Modifier.size(56.dp),
-                    shape = RoundedCornerShape(17.dp),
-                    color = MaterialTheme.colorScheme.primary,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            "A0",
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Black,
-                        )
-                    }
-                }
-                Column {
-                    Text(
-                        "Agent Zero",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        "Android client",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text(
-                    "Connect to your instance",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    "The app opens the real Agent Zero WebUI, so plugins, sessions and WebSockets keep working normally.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            Surface(
-                shape = RoundedCornerShape(22.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp,
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    Text(
-                        "Server",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-
-                    OutlinedTextField(
-                        value = raw,
-                        onValueChange = {
-                            raw = it
-                            error = null
-                        },
-                        label = { Text("Agent Zero URL") },
-                        placeholder = { Text("http://192.168.1.50:5080") },
-                        supportingText = error?.let { msg -> { Text(msg) } },
-                        isError = error != null,
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-
-                    if (loopback) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.72f),
+                            modifier = Modifier.size(44.dp),
+                            shape = RoundedCornerShape(13.dp),
+                            color = MaterialTheme.colorScheme.primary,
                         ) {
-                            Column(
-                                modifier = Modifier.padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
+                            Box(contentAlignment = Alignment.Center) {
                                 Text(
-                                    "127.0.0.1 is this phone",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                )
-                                Text(
-                                    "If Agent Zero runs on another computer, use that computer's LAN IP instead, such as http://192.168.1.50:5080. Loopback only works when Agent Zero is running on this Android device or when using adb reverse.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    "A0",
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Black,
                                 )
                             }
                         }
+                        Text(
+                            "AGENT ZERO",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground,
+                        )
                     }
 
-                    Button(
-                        onClick = {
-                            normalizeUrl(raw)
-                                .onSuccess(onConnect)
-                                .onFailure { error = it.message ?: "Invalid URL" }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(54.dp),
-                        shape = RoundedCornerShape(15.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.Transparent,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     ) {
-                        Text("Connect", fontWeight = FontWeight.Bold)
+                        Text(
+                            "WEBUI",
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold,
+                        )
                     }
                 }
-            }
 
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+                Spacer(Modifier.height(56.dp))
+
                 Text(
-                    "LAN HTTP is supported. Your Agent Zero server must listen on its LAN interface (for example 0.0.0.0), not only desktop-side 127.0.0.1.",
+                    "Your Agent Zero,\nwithout the desktop.",
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Text(
+                    "Connect directly to the real WebUI. Plugins, auth, WebSockets and custom interfaces stay intact.",
+                    modifier = Modifier.padding(top = 14.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Row(
+                    modifier = Modifier.padding(top = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    CapabilityChip("PLUGINS")
+                    CapabilityChip("WEBSOCKETS")
+                    CapabilityChip("HTTP/S")
+                }
+
+                Spacer(Modifier.height(44.dp))
+
+                Text(
+                    "INSTANCE",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+
+                OutlinedTextField(
+                    value = raw,
+                    onValueChange = {
+                        raw = it
+                        error = null
+                    },
+                    label = { Text("Server URL") },
+                    placeholder = { Text("http://127.0.0.1:5080") },
+                    supportingText = error?.let { msg -> { Text(msg) } },
+                    isError = error != null,
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 9.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    ),
+                )
+
+                if (loopback) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                        border = BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Text(
+                                "Loopback endpoint",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground,
+                            )
+                            Text(
+                                "Valid for a phone-local service, Termux/OpenSSH -L tunnel, adb reverse, or similar forwarding. The app will not rewrite localhost or 127.x.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        normalizeUrl(raw)
+                            .onSuccess(onConnect)
+                            .onFailure { error = it.message ?: "Invalid URL" }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp)
+                        .height(56.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                ) {
+                    Text("Open Agent Zero", fontWeight = FontWeight.Bold)
+                }
+
+                Text(
+                    "HTTP is allowed, including loopback and LAN endpoints. TLS is still enforced normally when you choose HTTPS.",
+                    modifier = Modifier.padding(top = 13.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(
-                    "For remote access, HTTPS is recommended.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
 
-            Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(24.dp))
+            }
         }
+    }
+}
+
+@Composable
+private fun CapabilityChip(label: String) {
+    Surface(
+        shape = RoundedCornerShape(9.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f)),
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
