@@ -16,6 +16,7 @@
 
 ## Local Contracts
 
+- `_symbolics` owns whether this plugin and the paired context compiler are active; do not create an independent runtime-mode switch here.
 - Never accept arbitrary Prolog goals or callable terms from model data.
 - Production coding adapters must reuse Agent Zero's existing execution and editor implementations; do not create a second shell or patch engine.
 - Tool execution remains subject to the normal Agent Zero tool lifecycle, scoped tool policy, intervention handling, and plugin hooks.
@@ -34,6 +35,7 @@
 - Run `pytest plugins/_prolog_rlm/tests` with `PROLOG_RLM_TEST_ROOT` pointing at the intended Prolog-RLM checkout.
 - Run the plugin Prolog test and the context-compiler integration tests.
 - Run the repository prompt-budget and tool-policy tests after changing visibility or schemas.
+- Verify `_symbolics` native mode excludes this plugin and RLM mode activates it together with the compiler.
 
 ## Child DOX Index
 
