@@ -28,6 +28,47 @@ def resolve_mode(config: dict[str, Any] | None = None) -> str:
     return mode
 
 
+def _scoped_activation_conflicts(plugins: Any, desired_state: str) -> list[str]:
+    """Return scoped toggles that could override the authoritative runtime mode."""
+
+    desired_toggle = (
+        plugins.ENABLED_FILE_NAME
+        if desired_state == "enabled"
+        else plugins.DISABLED_FILE_NAME
+    )
+    known_toggles = {plugins.ENABLED_FILE_NAME, plugins.DISABLED_FILE_NAME}
+    conflicts: list[str] = []
+
+    for plugin_name in MANAGED_PLUGINS:
+        assets = plugins.find_plugin_assets(
+            plugins.TOGGLE_FILE_PATTERN,
+            plugin_name=plugin_name,
+            project_name="*",
+            agent_profile="*",
+            only_first=False,
+        )
+        for asset in assets:
+            project_name = str(asset.get("project_name") or "")
+            agent_profile = str(asset.get("agent_profile") or "")
+            if not (project_name or agent_profile):
+                continue
+
+            toggle_name = os.path.basename(str(asset.get("path") or ""))
+            if toggle_name not in known_toggles or toggle_name == desired_toggle:
+                continue
+
+            scope = []
+            if project_name:
+                scope.append(f"project={project_name}")
+            if agent_profile:
+                scope.append(f"profile={agent_profile}")
+            conflicts.append(
+                f"{plugin_name} ({', '.join(scope)}): {toggle_name}"
+            )
+
+    return conflicts
+
+
 def sync_runtime_mode(config: dict[str, Any] | None = None) -> str:
     """Synchronize the paired RLM plugins to the selected runtime mode.
 
@@ -50,6 +91,14 @@ def sync_runtime_mode(config: dict[str, Any] | None = None) -> str:
     if enable_rlm and missing:
         raise RuntimeError(
             "Symbolics RLM mode requires bundled plugins: " + ", ".join(missing)
+        )
+
+    scoped_conflicts = _scoped_activation_conflicts(plugins, desired_state)
+    if scoped_conflicts:
+        raise RuntimeError(
+            "Symbolics runtime mode has conflicting scoped activation override(s): "
+            + "; ".join(scoped_conflicts)
+            + ". Align or remove those scoped toggles before startup."
         )
 
     original_states = {
