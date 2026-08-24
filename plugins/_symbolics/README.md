@@ -14,14 +14,16 @@ at once.
   context selection, prompt compilation, budgeting, planning, authority/effect
   reasoning, supervision, and verification through the existing typed bridge.
 
-The default remains `native` until the full installed-package/Nix/live-provider
-production gate is green. Select RLM mode with either the plugin config:
+Raw/source checkouts default to `native` unless configured otherwise. The Nix
+`a0-symbolics` application and development shell set `A0_SYMBOLICS_MODE=rlm` by
+default because those environments also install and expose the pinned
+Prolog-RLM package. Set the mode explicitly in plugin config:
 
 ```yaml
 mode: rlm
 ```
 
-or the process environment override:
+or with the process environment override:
 
 ```sh
 A0_SYMBOLICS_MODE=rlm
@@ -35,3 +37,6 @@ The managed RLM plugins ship disabled at the bundled-root level so native mode
 is clean even before startup extensions run. During startup the coordinator
 synchronizes their global activation to the selected mode. It changes plugin
 activation only; no Prolog policy is duplicated in Python.
+
+The packaged RLM default is accepted only when the exact candidate head passes
+the Symbolics RLM workflow, including both plugin suites and `nix flake check`.
