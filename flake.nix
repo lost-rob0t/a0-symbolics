@@ -100,6 +100,47 @@
             swipl -q -g "use_module(library(rlm)),rlm:rlm_ready,halt"
             touch "$out"
           '';
+          runtime-mode = pkgs.runCommand "a0-symbolics-runtime-mode" {
+            nativeBuildInputs = [ python ];
+          } ''
+            export HOME="$TMPDIR/home"
+            state_dir="$TMPDIR/state"
+            source_root="${source}/share/a0-symbolics"
+            runtime_root="$state_dir/runtime"
+            mkdir -p "$HOME" "$runtime_root" "$state_dir/usr/plugins" "$state_dir/tmp"
+            for entry in "$source_root"/*; do
+              name="$(basename "$entry")"
+              if [ "$name" != usr ] && [ "$name" != tmp ]; then
+                ln -sfn "$entry" "$runtime_root/$name"
+              fi
+            done
+            ln -sfn "$state_dir/usr" "$runtime_root/usr"
+            ln -sfn "$state_dir/tmp" "$runtime_root/tmp"
+            export TMPDIR="$state_dir/tmp"
+            export A0_SYMBOLICS_MODE=rlm
+            cd "$runtime_root"
+            ${python}/bin/python - <<'PY'
+            import os
+            from pathlib import Path
+
+            from helpers import plugins
+            from plugins._symbolics.helpers.mode import sync_runtime_mode
+
+            assert sync_runtime_mode() == "rlm"
+            assert plugins.get_toggle_state("_prolog_rlm") == "enabled"
+            assert plugins.get_toggle_state("_prolog_context_compiler") == "enabled"
+            assert Path("usr/plugins/_prolog_rlm/.toggle-1").is_file()
+            assert Path("usr/plugins/_prolog_context_compiler/.toggle-1").is_file()
+
+            os.environ["A0_SYMBOLICS_MODE"] = "native"
+            assert sync_runtime_mode() == "native"
+            assert plugins.get_toggle_state("_prolog_rlm") == "disabled"
+            assert plugins.get_toggle_state("_prolog_context_compiler") == "disabled"
+            assert Path("usr/plugins/_prolog_rlm/.toggle-0").is_file()
+            assert Path("usr/plugins/_prolog_context_compiler/.toggle-0").is_file()
+            PY
+            touch "$out"
+          '';
           plugin-imports = pkgs.runCommand "a0-symbolic-plugin-imports" {
             nativeBuildInputs = [ python pkgs.swi-prolog prologRlm ];
           } ''
