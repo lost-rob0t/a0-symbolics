@@ -75,13 +75,36 @@ def test_remove_message_files_cannot_escape_chat_root(monkeypatch, tmp_path: Pat
     assert marker.read_text(encoding="utf-8") == "must survive"
 
 
-def test_symlinked_chat_id_cannot_escape_chat_root(monkeypatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("target_kind", ["outside", "chat-root", "other-chat"])
+def test_symlinked_chat_id_is_never_a_storage_alias(
+    monkeypatch, tmp_path: Path, target_kind: str
+) -> None:
     monkeypatch.setattr(files, "_base_dir", str(tmp_path))
     chats = tmp_path / "usr" / "chats"
-    outside = tmp_path / "outside"
     chats.mkdir(parents=True)
+
+    if target_kind == "outside":
+        target = tmp_path / "outside"
+        target.mkdir()
+    elif target_kind == "chat-root":
+        target = chats
+    else:
+        target = chats / "otherchat"
+        target.mkdir()
+
+    (chats / "safeid").symlink_to(target, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="aliases another chat storage location"):
+        persist_chat.get_chat_folder_path("safeid")
+
+
+def test_message_directory_symlink_cannot_escape_chat(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(files, "_base_dir", str(tmp_path))
+    chat = tmp_path / "usr" / "chats" / "safeid"
+    outside = tmp_path / "outside"
+    chat.mkdir(parents=True)
     outside.mkdir()
-    (chats / "safeid").symlink_to(outside, target_is_directory=True)
+    (chat / "messages").symlink_to(outside, target_is_directory=True)
 
     with pytest.raises(ValueError, match="outside chat storage"):
-        persist_chat.get_chat_folder_path("safeid")
+        persist_chat.get_chat_msg_files_folder("safeid")
