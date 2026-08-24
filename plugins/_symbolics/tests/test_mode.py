@@ -71,6 +71,43 @@ def test_sync_rlm_fails_before_mutation_when_plugin_is_missing(monkeypatch):
     assert calls == []
 
 
+@pytest.mark.parametrize(
+    ("selected_mode", "initial_state", "toggle_file"),
+    [
+        ("rlm", "disabled", ".toggle-0"),
+        ("native", "enabled", ".toggle-1"),
+    ],
+)
+def test_sync_fails_closed_on_conflicting_scoped_activation_override(
+    monkeypatch,
+    selected_mode,
+    initial_state,
+    toggle_file,
+):
+    from helpers import plugins
+
+    states, calls = _fake_activation(monkeypatch, initial_state)
+
+    def find_assets(*_subpaths, plugin_name="*", **_kwargs):
+        if plugin_name != "_prolog_rlm":
+            return []
+        return [
+            {
+                "project_name": "project-a",
+                "agent_profile": "",
+                "path": f"/tmp/project-a/plugins/_prolog_rlm/{toggle_file}",
+            }
+        ]
+
+    monkeypatch.setattr(plugins, "find_plugin_assets", find_assets)
+
+    with pytest.raises(RuntimeError, match="conflicting scoped activation override"):
+        mode.sync_runtime_mode({"mode": selected_mode})
+
+    assert calls == []
+    assert states == {name: initial_state for name in mode.MANAGED_PLUGINS}
+
+
 def test_sync_rolls_back_partial_transition_even_if_toggle_raises_after_write(monkeypatch):
     states, calls = _fake_activation(
         monkeypatch,
