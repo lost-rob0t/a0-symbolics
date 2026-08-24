@@ -11,6 +11,14 @@ services:
       args:
         BRANCH: local
     restart: unless-stopped
+    mem_limit: 8g
+    memswap_limit: 8g
+    environment:
+      PROLOG_RLM_ENABLED: "${PROLOG_RLM_ENABLED:-1}"
+      PROLOG_RLM_ROOT: ""
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-openrouter/auto}"
+      EXTENSIONS_LOG: "${EXTENSIONS_LOG:-0}"
     ports:
       - "50080:80"
     volumes:
@@ -22,6 +30,12 @@ services:
         hard: 65535
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "/opt/a0-symbolics/healthcheck.sh"]
+      interval: 10s
+      timeout: 6s
+      retries: 30
+      start_period: 10m
 
 volumes:
   a0-symbolics-nix:
