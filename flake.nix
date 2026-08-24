@@ -3,7 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
-    prolog-rlm.url = "github:lost-rob0t/prolog-rlm?ref=codex/sol-high-integration";
+    prolog-rlm.url = "github:lost-rob0t/prolog-rlm";
     prolog-rlm.inputs.nixpkgs.follows = "nixpkgs";
   };
 
