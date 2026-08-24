@@ -35,12 +35,18 @@ def _parse_persisted_datetime(value: str | None) -> datetime:
 
 
 def _chat_path(ctxid: str, *parts: str) -> str:
-    """Resolve a validated chat-owned path and prove containment."""
+    """Resolve a validated chat-owned path and prove exact containment."""
 
     safe_id = validate_context_id(ctxid)
     root = Path(files.get_abs_path(CHATS_FOLDER)).resolve()
-    candidate = root.joinpath(safe_id, *parts).resolve()
-    if not candidate.is_relative_to(root):
+    chat_root = root / safe_id
+    resolved_chat_root = chat_root.resolve()
+    if resolved_chat_root != chat_root:
+        raise ValueError("context id path aliases another chat storage location")
+
+    candidate = chat_root.joinpath(*parts)
+    resolved_candidate = candidate.resolve()
+    if resolved_candidate != candidate or not resolved_candidate.is_relative_to(chat_root):
         raise ValueError("context id resolves outside chat storage")
     return str(candidate)
 
