@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export USER="${USER:-root}"
+
 readonly HM_DIR="${A0_HOME_MANAGER_DIR:-/a0/usr/home-manager}"
 readonly HM_SEED_DIR="/opt/a0-symbolics/home-manager"
 readonly SYSTEM_JOBS_DIR="${A0_SYSTEM_JOBS_DIR:-/a0/usr/system-jobs}"
@@ -75,6 +77,40 @@ activate_home_manager() {
     --flake "$HM_DIR#root-$system"
 }
 
+activate_prolog_rlm() {
+  local source_root="${A0_SOURCE_ROOT:-/git/agent-zero}"
+  local prolog_rlm
+  local pack_dir="${XDG_DATA_HOME:-$HOME/.local/share}/swi-prolog/pack"
+
+  prolog_rlm="$(nix build "$source_root#prolog-rlm" --no-link --print-out-paths)"
+  ln -sfn "$prolog_rlm" /nix/var/nix/gcroots/a0-symbolics-prolog-rlm
+  mkdir -p "$pack_dir"
+  ln -sfn "$prolog_rlm/share/swi-prolog/pack/prolog_rlm" "$pack_dir/prolog_rlm"
+  export PROLOG_RLM_ROOT=""
+  export SWIPL_PACK_PATH="$prolog_rlm/share/swi-prolog/pack${SWIPL_PACK_PATH:+:$SWIPL_PACK_PATH}"
+}
+
+generate_smoke_evidence() {
+  (
+    local attempt
+    local smoke_tmp="/run/a0-symbolics/smoke.json.$$"
+
+    install -d /run/a0-symbolics
+    for attempt in $(seq 1 180); do
+      if curl --fail --silent --max-time 2 http://127.0.0.1:80/ >/dev/null; then
+        if /opt/a0-symbolics/smoke.sh /a0 > "$smoke_tmp"; then
+          mv "$smoke_tmp" /run/a0-symbolics/smoke.json
+        else
+          rm -f "$smoke_tmp"
+        fi
+        return
+      fi
+      sleep 2
+    done
+    printf 'Agent Zero did not become ready for the symbolic smoke test.\n' >&2
+  ) &
+}
+
 prepare_system_jobs() {
   local cron_bin="/root/.nix-profile/bin/cron"
 
@@ -97,13 +133,15 @@ prepare_system_jobs() {
 
   # Reuse Agent Zero's existing supervised cron slot, but run the Nix binary.
   sed -i \
-    "s#^command=/usr/sbin/cron -f$#command=$cron_bin -n#" \
+    "s#^command=/usr/sbin/cron -f\$#command=$cron_bin -n#" \
     "$SUPERVISOR_CONF"
 }
 
 seed_home_manager
 ensure_system_jobs_home_manager
 activate_home_manager
+activate_prolog_rlm
 prepare_system_jobs
+generate_smoke_evidence
 
 exec /exe/initialize.sh "${BRANCH:-local}"
