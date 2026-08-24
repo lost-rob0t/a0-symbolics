@@ -10,6 +10,7 @@
 - `compose.yml.example` owns the tracked example for the local a0-symbolics service and its two persistent volumes.
 - `compose.yml` is machine-local, copied from the example, and intentionally gitignored so host-specific changes survive pulls.
 - `initialize.sh` seeds and activates the Home Manager profile before normal Agent Zero startup.
+- `healthcheck.sh` and `smoke.*` own live Agent Zero-to-Prolog readiness evidence.
 - `home-manager/` owns the default reusable Home Manager configuration copied into user state on first boot.
 
 ## Local Contracts
@@ -18,6 +19,8 @@
 - Store the mutable Home Manager configuration under `/a0/usr/home-manager` so it survives container replacement without making application code persistent.
 - Treat the committed Home Manager files as first-boot defaults only. Never overwrite a user's persisted Home Manager configuration during later starts.
 - Keep Nix daemonless inside the container and enable flakes with sandboxing disabled for container compatibility.
+- Bound both image builds and the running service to 8 GiB by default; local operators may choose a different explicit build limit.
+- Treat any non-running supervised process as unhealthy; HTTP and cached smoke evidence alone are insufficient readiness evidence.
 - Never bake secrets or local user data into the image.
 - Never track `docker/symbolics/compose.yml`; local ports, mounts, devices, and machine-specific overrides belong there.
 

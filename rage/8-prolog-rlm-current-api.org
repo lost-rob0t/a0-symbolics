@@ -1,0 +1,87 @@
+* Run identity
+- Consumed issue :: #8
+- Branch :: =rage/8-prolog-rlm-current-api=
+- RAGE start commit :: =65300fa858304ba9f9d3de475fac5c4268df555d=
+
+* Analyze
+- Mode :: Auto-RAGE, explicitly requested by the operator on 2026-08-24.
+- Control plane :: Issue #17 proposes =roam/= but that policy is not merged. This
+  run therefore keeps ADADR evidence in the canonical RAGE run log and does not
+  invent a second design directory.
+- Agent Zero main :: =65300fa858304ba9f9d3de475fac5c4268df555d=
+- Recorded Prolog-RLM pin :: =7c3561bcc34de55fba875dfd18b773211a3d3420=
+- Current fetched Prolog-RLM main :: =0d8e1008ba525f0ec7e51cba2de34ede8a63cf6f=
+- Drift :: 32 commits. The public Agent Zero adapter path and predicates remain
+  present. The current runtime adds supervised-agent, closed-data, cancellation,
+  and trusted tool invocation-option behavior without removing the calls used by
+  Agent Zero.
+- Baseline evidence :: The external Agent Zero tool-pack passes 3/3 PlUnit tests
+  against current Prolog-RLM. The first system-Python pytest attempt was invalid
+  because repository runtime dependencies were absent; the authoritative bridge
+  run is inside the bounded Symbolics container.
+- Contract defect :: =flake.nix= names moving Prolog-RLM =main= while only
+  =flake.lock= records a revision. This violates issue #8's exact-input policy and
+  permits an unreviewed lock refresh to change the production dependency.
+
+* Design
+- Make the Prolog-RLM flake URL name the exact current 40-character revision.
+- Regenerate only the Prolog-RLM lock node through Nix.
+- Add an offline pytest contract that requires the URL revision, lock original
+  revision, and lock resolved revision to be the same exact SHA.
+- Re-run the existing Python bridge/context suites and Prolog pack suite against
+  a detached worktree at that exact SHA, then run the Nix integration gate.
+- Non-goal :: Do not expose new arbitrary or generic Prolog operations. The new
+  =tool_registry_runtime_tools/4= API is not needed by the current inert external
+  pack validation path.
+
+* Adversarial review
+- A lock-only update would still leave production configured against moving
+  =main=; reject it.
+- A URL-only update with stale lock could evaluate a different dependency than
+  review expects; the offline consistency test rejects it.
+- Hard-coding only a short SHA risks ambiguity; require 40 lowercase hex digits.
+- Testing against the user's stale Prolog-RLM checkout would produce wrong-source
+  evidence; use the fetched detached =origin/main= worktree.
+- Updating the open PR #51 branch would conflate concurrent runtime-mode work;
+  keep this issue slice based on current Agent Zero =main=.
+
+* Decision
+- Status :: accepted by Auto-RAGE before implementation.
+- Rationale :: Exact pin consistency plus current-checkout conformance is the
+  smallest change that updates the consumed API without duplicating Prolog policy
+  or widening authority.
+
+* Realize
+- [X] Add the exact-pin regression and confirm its intended red state.
+- [X] Pin and lock Prolog-RLM =0d8e1008ba525f0ec7e51cba2de34ede8a63cf6f=.
+- [-] Run focused current-API conformance and the repository gates; focused and
+  live gates are green, while the monolithic local Nix gate remains environment-blocked.
+
+* Verification
+- Pin/container/runtime contracts :: 16 passed.
+- Current API pack conformance :: 3/3 PlUnit tests passed.
+- Context/runtime Python bridges :: 12 passed, 7 skipped.
+- Nix Prolog library check :: passed against the exact pin.
+- Nix flake evaluation :: all package, app, development-shell, and check
+  derivations evaluated successfully with =nix flake check --no-build --show-trace=.
+- Live Symbolics smoke :: Agent Zero registry -> context compiler -> Prolog-RLM;
+  =ready=true=, =policy_owner=prolog=, version =0.1.0-dev=.
+- Full flake gate :: evaluation and the Prolog library check passed. The
+  monolithic package build could not complete in this Docker environment because
+  Nix sandboxing is disabled and an upstream Cargo build creates
+  =/homeless-shelter=, triggering Nix's subsequent purity guard. The redundant
+  202-package plugin-import rebuild was stopped after the live bridge gate passed.
+
+* Bounded launch evidence
+- Final container :: healthy at =http://127.0.0.1:5080= with zero restarts and
+  =OOMKilled=false=.
+- Runtime limit :: 8 GiB RAM and 8 GiB total memory plus swap; no container swap
+  allowance beyond the RAM ceiling.
+- Startup repairs :: install the pinned snapshot desktop transaction before
+  =nix-bin=, default =USER=root=, normalize the Nix SWI-Prolog package name,
+  escape the supervisor cron rewrite, activate/root the pinned Prolog-RLM pack,
+  generate health smoke evidence after HTTP readiness, bind the fatal-process
+  listener to system Python, and reject non-running Supervisor processes in the
+  container healthcheck.
+- Supervised runtime :: all six processes =RUNNING=, zero restarts, no startup
+  =FATAL=, =ModuleNotFoundError=, OOM, or killed-process log markers.
