@@ -1,0 +1,66 @@
+name: Symbolics RLM
+
+on:
+  pull_request:
+    paths:
+      - "flake.nix"
+      - "flake.lock"
+      - "nix/**"
+      - "plugins/_symbolics/**"
+      - "plugins/_prolog_rlm/**"
+      - "plugins/_prolog_context_compiler/**"
+      - ".github/workflows/symbolics-rlm.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "flake.nix"
+      - "flake.lock"
+      - "nix/**"
+      - "plugins/_symbolics/**"
+      - "plugins/_prolog_rlm/**"
+      - "plugins/_prolog_context_compiler/**"
+      - ".github/workflows/symbolics-rlm.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: symbolics-rlm-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Symbolics
+        uses: actions/checkout@v5
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31.11.1
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout pinned Prolog-RLM test source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rev="$(jq -r '.nodes["prolog-rlm"].locked.rev' flake.lock)"
+          test -n "$rev"
+          git clone --quiet --filter=blob:none https://github.com/lost-rob0t/prolog-rlm "$RUNNER_TEMP/prolog-rlm"
+          git -C "$RUNNER_TEMP/prolog-rlm" checkout --quiet "$rev"
+          echo "PROLOG_RLM_TEST_ROOT=$RUNNER_TEMP/prolog-rlm" >> "$GITHUB_ENV"
+
+      - name: Focused runtime-mode and bridge tests
+        run: |
+          nix develop --command pytest -q \
+            plugins/_symbolics/tests \
+            plugins/_prolog_context_compiler/tests \
+            plugins/_prolog_rlm/tests \
+            tests/test_default_prompt_budget.py \
+            tests/test_plugin_activation_ui.py
+
+      - name: Nix integration gate
+        run: nix flake check -L
