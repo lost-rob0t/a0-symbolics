@@ -50,6 +50,20 @@ jobs:
           nix flake lock --update-input prolog-rlm
           cat flake.lock
 
+      - name: Export regenerated lock evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: regenerated-flake-lock
+          path: flake.lock
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Require committed lock consistency
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- flake.lock
+
       - name: Checkout pinned Prolog-RLM test source
         shell: bash
         run: |
@@ -61,8 +75,10 @@ jobs:
           echo "PROLOG_RLM_TEST_ROOT=$RUNNER_TEMP/prolog-rlm" >> "$GITHUB_ENV"
 
       - name: Focused runtime-mode and bridge tests
+        shell: bash
         run: |
-          nix develop --command pytest -q \
+          set -euo pipefail
+          timeout 20m nix develop --command pytest -q --durations=20 \
             plugins/_symbolics/tests \
             plugins/_prolog_context_compiler/tests \
             plugins/_prolog_rlm/tests \
