@@ -50,58 +50,61 @@ internal fun AgentZeroWebView(server: String, controller: WebController, modifie
         onDispose { controller.view?.destroy(); controller.view = null }
     }
 
-    AndroidView(modifier, factory = { c ->
-        WebView(c).apply w@{
-            controller.view = this
-            WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
-            settings.apply {
-                javaScriptEnabled = true; domStorageEnabled = true; databaseEnabled = true
-                allowFileAccess = false; allowContentAccess = true; cacheMode = WebSettings.LOAD_DEFAULT
-                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                javaScriptCanOpenWindowsAutomatically = true; setSupportMultipleWindows(false)
-                mediaPlaybackRequiresUserGesture = false
-                userAgentString = "$userAgentString A0SymbolicsAndroid/${BuildConfig.VERSION_NAME}"
-            }
-            CookieManager.getInstance().apply { setAcceptCookie(true); setAcceptThirdPartyCookies(this@w, true) }
-            webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest) = r.url.scheme?.lowercase() !in setOf("http", "https")
-                override fun onPageStarted(v: WebView, u: String?, f: android.graphics.Bitmap?) { controller.error = null; controller.sync() }
-                override fun onPageFinished(v: WebView, u: String?) {
-                    controller.progress = 100; controller.sync()
-                    if (u != null && origin(u) == origin(server)) v.evaluateJavascript(MOBILE_JS, null)
+    AndroidView(
+        factory = { c ->
+            WebView(c).apply w@{
+                controller.view = this
+                WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
+                settings.apply {
+                    javaScriptEnabled = true; domStorageEnabled = true; databaseEnabled = true
+                    allowFileAccess = false; allowContentAccess = true; cacheMode = WebSettings.LOAD_DEFAULT
+                    mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                    javaScriptCanOpenWindowsAutomatically = true; setSupportMultipleWindows(false)
+                    mediaPlaybackRequiresUserGesture = false
+                    userAgentString = "$userAgentString A0SymbolicsAndroid/${BuildConfig.VERSION_NAME}"
                 }
-                override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) { if (r.isForMainFrame) controller.error = e.description?.toString() ?: "Server unreachable" }
-                override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: android.net.http.SslError) { h.cancel(); controller.error = "TLS certificate validation failed." }
-                override fun onRenderProcessGone(v: WebView, d: android.webkit.RenderProcessGoneDetail): Boolean { controller.error = "WebView stopped. Reconnect to recover."; controller.view = null; return true }
-            }
-            webChromeClient = object : WebChromeClient() {
-                override fun onProgressChanged(v: WebView, p: Int) { controller.progress = p; controller.sync() }
-                override fun onShowFileChooser(v: WebView, cb: ValueCallback<Array<Uri>>, p: FileChooserParams): Boolean {
-                    fileCb?.onReceiveValue(null); fileCb = cb
-                    return runCatching { files.launch(p.createIntent()); true }.getOrElse { fileCb = null; cb.onReceiveValue(null); false }
+                CookieManager.getInstance().apply { setAcceptCookie(true); setAcceptThirdPartyCookies(this@w, true) }
+                webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest) = r.url.scheme?.lowercase() !in setOf("http", "https")
+                    override fun onPageStarted(v: WebView, u: String?, f: android.graphics.Bitmap?) { controller.error = null; controller.sync() }
+                    override fun onPageFinished(v: WebView, u: String?) {
+                        controller.progress = 100; controller.sync()
+                        if (u != null && origin(u) == origin(server)) v.evaluateJavascript(MOBILE_JS, null)
+                    }
+                    override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) { if (r.isForMainFrame) controller.error = e.description?.toString() ?: "Server unreachable" }
+                    override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: android.net.http.SslError) { h.cancel(); controller.error = "TLS certificate validation failed." }
+                    override fun onRenderProcessGone(v: WebView, d: android.webkit.RenderProcessGoneDetail): Boolean { controller.error = "WebView stopped. Reconnect to recover."; controller.view = null; return true }
                 }
-                override fun onPermissionRequest(req: PermissionRequest) {
-                    if (origin(req.origin.toString()) != origin(server)) { req.deny(); return }
-                    val needs = buildList {
-                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE in req.resources) add(Manifest.permission.RECORD_AUDIO)
-                        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE in req.resources) add(Manifest.permission.CAMERA)
-                    }.toTypedArray()
-                    if (needs.isEmpty()) req.deny() else { permissionReq = req; permissions.launch(needs) }
+                webChromeClient = object : WebChromeClient() {
+                    override fun onProgressChanged(v: WebView, p: Int) { controller.progress = p; controller.sync() }
+                    override fun onShowFileChooser(v: WebView, cb: ValueCallback<Array<Uri>>, p: FileChooserParams): Boolean {
+                        fileCb?.onReceiveValue(null); fileCb = cb
+                        return runCatching { files.launch(p.createIntent()); true }.getOrElse { fileCb = null; cb.onReceiveValue(null); false }
+                    }
+                    override fun onPermissionRequest(req: PermissionRequest) {
+                        if (origin(req.origin.toString()) != origin(server)) { req.deny(); return }
+                        val needs = buildList {
+                            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE in req.resources) add(Manifest.permission.RECORD_AUDIO)
+                            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE in req.resources) add(Manifest.permission.CAMERA)
+                        }.toTypedArray()
+                        if (needs.isEmpty()) req.deny() else { permissionReq = req; permissions.launch(needs) }
+                    }
                 }
-            }
-            setDownloadListener { u, ua, cd, mime, _ ->
-                runCatching {
-                    val name = URLUtil.guessFileName(u, cd, mime)
-                    val req = DownloadManager.Request(Uri.parse(u)).setMimeType(mime)
-                        .addRequestHeader("User-Agent", ua).addRequestHeader("Cookie", CookieManager.getInstance().getCookie(u).orEmpty())
-                        .setTitle(name).setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
-                    (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(req)
+                setDownloadListener { u, ua, cd, mime, _ ->
+                    runCatching {
+                        val name = URLUtil.guessFileName(u, cd, mime)
+                        val req = DownloadManager.Request(Uri.parse(u)).setMimeType(mime)
+                            .addRequestHeader("User-Agent", ua).addRequestHeader("Cookie", CookieManager.getInstance().getCookie(u).orEmpty())
+                            .setTitle(name).setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
+                        (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(req)
+                    }
                 }
+                loadUrl(server)
             }
-            loadUrl(server)
-        }
-    })
+        },
+        modifier = modifier,
+    )
 }
 
 private const val MOBILE_JS = """
