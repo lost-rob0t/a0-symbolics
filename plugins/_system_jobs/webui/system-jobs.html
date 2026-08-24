@@ -5,68 +5,241 @@
     import { store } from "/plugins/_system_jobs/webui/system-jobs-store.js";
   </script>
   <style>
-    .system-jobs { display: flex; flex-direction: column; gap: 1rem; min-width: min(900px, 90vw); }
+    .system-jobs {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      min-width: min(900px, calc(100vw - 3rem));
+    }
+
+    .system-jobs-overview {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1.5rem;
+      padding: .95rem 1rem;
+      border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+      border-radius: 7px;
+      background: color-mix(in srgb, var(--color-panel) 86%, var(--color-background));
+    }
+
+    .system-jobs-runtime { display: flex; align-items: center; gap: .5rem; }
+    .system-jobs-runtime-dot {
+      width: .55rem;
+      height: .55rem;
+      border-radius: 50%;
+      background: var(--color-secondary);
+      box-shadow: 0 2px 8px color-mix(in srgb, var(--color-secondary) 34%, transparent);
+    }
+    .system-jobs-runtime-dot.is-running {
+      background: #32b678;
+      box-shadow: 0 2px 8px rgba(50, 182, 120, .34);
+    }
+    .system-jobs-runtime-copy { margin: .35rem 0 .55rem; max-width: 64ch; color: var(--color-secondary); }
+    .system-jobs-root {
+      display: inline-block;
+      max-width: min(64ch, 100%);
+      overflow: hidden;
+      color: var(--color-text);
+      font-size: .8rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .system-jobs-toolbar { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
-    .system-jobs-status { margin-right: auto; opacity: .8; font-size: .9rem; }
-    .system-jobs-table { width: 100%; border-collapse: collapse; }
-    .system-jobs-table th, .system-jobs-table td { text-align: left; padding: .6rem; border-bottom: 1px solid var(--color-border, #333); vertical-align: top; }
+    .system-jobs-toolbar .btn { white-space: nowrap; }
+    .system-jobs-toolbar .btn x-icon { margin-right: .25rem; }
     .system-jobs-actions { display: flex; gap: .35rem; flex-wrap: wrap; }
-    .system-jobs-editor { display: grid; gap: .75rem; padding: 1rem; border: 1px solid var(--color-border, #333); border-radius: .6rem; }
-    .system-jobs-editor label { display: grid; gap: .3rem; }
-    .system-jobs-editor textarea { min-height: 260px; font-family: monospace; resize: vertical; }
-    .system-jobs-editor-row { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
-    .system-jobs-log { max-height: 360px; overflow: auto; white-space: pre-wrap; background: rgba(0,0,0,.25); padding: .8rem; border-radius: .4rem; font-family: monospace; }
-    @media (max-width: 700px) { .system-jobs-editor-row { grid-template-columns: 1fr; } }
+
+    .system-jobs-loading,
+    .system-jobs-empty {
+      display: grid;
+      justify-items: center;
+      gap: .5rem;
+      padding: 2.5rem 1.25rem;
+      color: var(--color-secondary);
+      text-align: center;
+    }
+    .system-jobs-loading x-icon,
+    .system-jobs-empty x-icon { color: var(--color-primary); }
+    .system-jobs-empty h3 { margin: .15rem 0 0; color: var(--color-text); font-size: 1rem; }
+    .system-jobs-empty p { margin: 0 0 .5rem; max-width: 52ch; }
+
+    .system-jobs-table { width: 100%; border-collapse: collapse; }
+    .system-jobs-table th,
+    .system-jobs-table td {
+      padding: .7rem .6rem;
+      vertical-align: middle;
+      text-align: left;
+    }
+    .system-jobs-name { display: grid; gap: .2rem; }
+    .system-jobs-workdir { color: var(--color-secondary); font-size: .8rem; }
+    .system-jobs-schedule {
+      padding: .15rem .35rem;
+      border-radius: 4px;
+      background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+      color: var(--color-text);
+      font-size: .8rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .system-jobs-state {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      color: var(--color-secondary);
+      font-size: .8rem;
+      text-transform: capitalize;
+    }
+    .system-jobs-state::before {
+      width: .45rem;
+      height: .45rem;
+      border-radius: 50%;
+      background: currentColor;
+      content: "";
+    }
+    .system-jobs-state.is-enabled { color: #32b678; }
+
+    .system-jobs-editor {
+      display: grid;
+      gap: 1rem;
+      padding: 1rem;
+      border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+      border-radius: 7px;
+      background: color-mix(in srgb, var(--color-panel) 82%, var(--color-background));
+    }
+    .system-jobs-editor-heading { display: flex; justify-content: space-between; gap: 1rem; }
+    .system-jobs-editor-heading h3 { margin: 0 0 .25rem; font-size: 1rem; }
+    .system-jobs-editor-heading p { margin: 0; color: var(--color-secondary); }
+    .system-jobs-editor label { display: grid; gap: .35rem; }
+    .system-jobs-label { font-weight: 650; }
+    .system-jobs-help { color: var(--color-secondary); font-size: .8rem; }
+    .system-jobs-editor textarea {
+      min-height: 220px;
+      font-family: var(--font-family-monospace, monospace);
+      resize: vertical;
+    }
+    .system-jobs-editor-row { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; }
+    .system-jobs-enabled {
+      display: flex !important;
+      align-items: center;
+      gap: .55rem !important;
+      align-self: end;
+      min-height: 42px;
+    }
+    .system-jobs-enabled input { accent-color: var(--color-primary); }
+
+    .system-jobs-log {
+      max-height: 360px;
+      overflow: auto;
+      margin: 0;
+      padding: .85rem;
+      border-radius: 5px;
+      background: color-mix(in srgb, var(--color-background) 82%, #000 18%);
+      font-family: var(--font-family-monospace, monospace);
+      font-size: .8rem;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      scrollbar-color: var(--color-border) transparent;
+    }
+
+    @media (max-width: 700px) {
+      .system-jobs { min-width: 0; }
+      .system-jobs-overview { flex-direction: column; }
+      .system-jobs-overview .system-jobs-toolbar { width: 100%; }
+      .system-jobs-overview .btn-ok { margin-left: auto; }
+      .system-jobs-editor-row { grid-template-columns: 1fr; }
+      .system-jobs-enabled { align-self: start; }
+      .system-jobs-table thead { display: none; }
+      .system-jobs-table,
+      .system-jobs-table tbody,
+      .system-jobs-table tr,
+      .system-jobs-table td { display: block; width: 100%; }
+      .system-jobs-table tr { padding: .5rem 0; border-bottom: 1px solid var(--color-border); }
+      .system-jobs-table td { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: .75rem; border: 0; }
+      .system-jobs-table td::before { color: var(--color-secondary); content: attr(data-label); font-size: .8rem; font-weight: 650; }
+    }
   </style>
 </head>
 <body>
   <div x-data>
     <template x-if="$store.systemJobsStore">
       <div class="system-jobs" x-create="$store.systemJobsStore.onOpen()" x-destroy="$store.systemJobsStore.cleanup()">
-        <div class="system-jobs-toolbar">
-          <div class="system-jobs-status">
-            <strong>cron:</strong>
-            <span x-text="$store.systemJobsStore.status.running ? 'running' : 'not detected'"></span>
-            <span> · </span>
-            <span x-text="$store.systemJobsStore.status.root || '/a0/usr/system-jobs'"></span>
+        <div class="system-jobs-overview">
+          <div aria-live="polite">
+            <div class="system-jobs-runtime">
+              <span class="system-jobs-runtime-dot" :class="{ 'is-running': $store.systemJobsStore.status.running }"></span>
+              <strong x-text="$store.systemJobsStore.status.running ? 'Cron is running' : 'Cron is not detected'"></strong>
+            </div>
+            <p class="system-jobs-runtime-copy">Run persistent shell jobs on a cron schedule. Scripts, logs, and job definitions stay in Agent Zero user storage.</p>
+            <code class="system-jobs-root" x-text="$store.systemJobsStore.status.root || '/a0/usr/system-jobs'"></code>
           </div>
-          <button class="btn" @click="$store.systemJobsStore.refresh()" :disabled="$store.systemJobsStore.loading">Refresh</button>
-          <button class="btn" @click="$store.systemJobsStore.syncCron()">Sync crontab</button>
-          <button class="btn btn-ok" @click="$store.systemJobsStore.newJob()">New job</button>
+          <div class="system-jobs-toolbar">
+            <button class="btn" @click="$store.systemJobsStore.refresh()" :disabled="$store.systemJobsStore.loading">
+              <x-icon name="refresh"></x-icon>
+              <span>Refresh</span>
+            </button>
+            <button class="btn" @click="$store.systemJobsStore.syncCron()">
+              <x-icon name="sync"></x-icon>
+              <span>Sync crontab</span>
+            </button>
+            <button class="btn btn-ok" @click="$store.systemJobsStore.newJob()">
+              <x-icon name="add"></x-icon>
+              <span>New job</span>
+            </button>
+          </div>
         </div>
 
         <div x-show="$store.systemJobsStore.editorOpen" class="system-jobs-editor">
+          <div class="system-jobs-editor-heading">
+            <div>
+              <h3 x-text="$store.systemJobsStore.editor.id ? 'Edit system job' : 'Create a system job'"></h3>
+              <p>Use a five-field cron schedule. The script runs from the selected working directory.</p>
+            </div>
+          </div>
           <div class="system-jobs-editor-row">
             <label>
-              <span>Name</span>
+              <span class="system-jobs-label">Name</span>
               <input type="text" x-model="$store.systemJobsStore.editor.name" placeholder="Nightly backup" />
             </label>
             <label>
-              <span>Cron schedule</span>
+              <span class="system-jobs-label">Cron schedule</span>
               <input type="text" x-model="$store.systemJobsStore.editor.schedule" placeholder="0 2 * * *" />
+              <span class="system-jobs-help">Minute, hour, day of month, month, weekday</span>
             </label>
           </div>
           <div class="system-jobs-editor-row">
             <label>
-              <span>Working directory</span>
+              <span class="system-jobs-label">Working directory</span>
               <input type="text" x-model="$store.systemJobsStore.editor.workdir" placeholder="/a0/usr/workdir" />
             </label>
-            <label style="display:flex;align-items:center;gap:.5rem;align-self:end;padding-bottom:.45rem;">
+            <label class="system-jobs-enabled">
               <input type="checkbox" x-model="$store.systemJobsStore.editor.enabled" />
-              <span>Enabled</span>
+              <span>Enable this job after saving</span>
             </label>
           </div>
           <label>
-            <span>Script</span>
-            <textarea x-model="$store.systemJobsStore.editor.script" spellcheck="false" placeholder="echo hello from system-jobs"></textarea>
+            <span class="system-jobs-label">Shell script</span>
+            <textarea x-model="$store.systemJobsStore.editor.script" spellcheck="false" placeholder="printf 'Agent Zero job started at %s\n' &quot;$(date -Is)&quot;"></textarea>
           </label>
           <div class="system-jobs-actions">
-            <button class="btn btn-ok" @click="$store.systemJobsStore.saveJob()">Save</button>
+            <button class="btn btn-ok" @click="$store.systemJobsStore.saveJob()" x-text="$store.systemJobsStore.editor.id ? 'Save changes' : 'Create job'"></button>
             <button class="btn btn-cancel" @click="$store.systemJobsStore.cancelEdit()">Cancel</button>
           </div>
         </div>
 
-        <div class="table-wrapper" x-show="!$store.systemJobsStore.loading">
+        <div class="system-jobs-loading" x-show="$store.systemJobsStore.loading" aria-live="polite">
+          <x-icon name="progress_activity"></x-icon>
+          <span>Loading system jobs…</span>
+        </div>
+
+        <div class="system-jobs-empty" x-show="!$store.systemJobsStore.loading && $store.systemJobsStore.jobs.length === 0">
+          <x-icon name="schedule"></x-icon>
+          <h3>No system jobs yet</h3>
+          <p>Create a job to run maintenance, reports, or local automation on a persistent schedule.</p>
+          <button class="btn btn-ok" @click="$store.systemJobsStore.newJob()">Create your first job</button>
+        </div>
+
+        <div class="table-wrapper" x-show="!$store.systemJobsStore.loading && $store.systemJobsStore.jobs.length > 0">
           <table class="data-table system-jobs-table">
             <thead>
               <tr>
@@ -79,32 +252,33 @@
             <tbody>
               <template x-for="job in $store.systemJobsStore.jobs" :key="job.id">
                 <tr>
-                  <td>
+                  <td data-label="Job">
+                    <div class="system-jobs-name">
                     <strong x-text="job.name"></strong>
-                    <div style="opacity:.65;font-size:.8rem;" x-text="job.workdir"></div>
+                      <span class="system-jobs-workdir" x-text="job.workdir"></span>
+                    </div>
                   </td>
-                  <td><code x-text="job.schedule"></code></td>
-                  <td x-text="job.enabled ? 'enabled' : 'disabled'"></td>
-                  <td>
+                  <td data-label="Schedule"><code class="system-jobs-schedule" x-text="job.schedule"></code></td>
+                  <td data-label="State">
+                    <span class="system-jobs-state" :class="{ 'is-enabled': job.enabled }" x-text="job.enabled ? 'enabled' : 'disabled'"></span>
+                  </td>
+                  <td data-label="Actions">
                     <div class="system-jobs-actions">
                       <button class="btn btn-small" @click="$store.systemJobsStore.editJob(job)">Edit</button>
-                      <button class="btn btn-small" @click="$store.systemJobsStore.runJob(job)">Run</button>
-                      <button class="btn btn-small" @click="$store.systemJobsStore.loadLog(job)">Log</button>
+                      <button class="btn btn-small" @click="$store.systemJobsStore.runJob(job)">Run now</button>
+                      <button class="btn btn-small" @click="$store.systemJobsStore.loadLog(job)">View log</button>
                       <button class="btn btn-small btn-cancel" @click="$confirmClick($event, () => $store.systemJobsStore.deleteJob(job))">Delete</button>
                     </div>
                   </td>
                 </tr>
               </template>
-              <tr x-show="$store.systemJobsStore.jobs.length === 0">
-                <td colspan="4" style="opacity:.7;">No managed system jobs yet.</td>
-              </tr>
             </tbody>
           </table>
         </div>
 
         <div x-show="$store.systemJobsStore.logJob" class="system-jobs-editor">
           <div class="system-jobs-toolbar">
-            <strong>Log: <span x-text="$store.systemJobsStore.logJob?.name"></span></strong>
+            <strong>Output from <span x-text="$store.systemJobsStore.logJob?.name"></span></strong>
             <button class="btn" @click="$store.systemJobsStore.loadLog($store.systemJobsStore.logJob)">Refresh log</button>
             <button class="btn btn-cancel" @click="$store.systemJobsStore.closeLog()">Close</button>
           </div>
