@@ -8,6 +8,9 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INITIALIZE_SCRIPT = REPO_ROOT / "docker" / "run" / "fs" / "exe" / "initialize.sh"
+SUPERVISOR_CONFIG = (
+    REPO_ROOT / "docker" / "run" / "fs" / "etc" / "supervisor" / "conf.d" / "supervisord.conf"
+)
 
 
 def _raise_limit_function() -> str:
@@ -63,3 +66,9 @@ def test_initialize_caps_open_file_limit_at_hard_limit():
     )
 
     assert "Raised open file soft limit from 1024 to 2048" in result.stdout
+
+
+def test_supervisor_listener_uses_system_python_with_supervisor_module():
+    config = SUPERVISOR_CONFIG.read_text(encoding="utf-8")
+
+    assert "command=/usr/bin/python3 /exe/supervisor_event_listener.py" in config

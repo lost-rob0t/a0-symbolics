@@ -8,6 +8,7 @@
 ## Ownership
 
 - `openrouter_release_notes_system_prompt.md` is consumed by `.github/scripts/docker_release_plan.py`.
+- `symbolics` owns bounded local Symbolics build, launch, status, and verification behavior; the small command wrappers delegate to it.
 - Additional repository maintenance scripts belong here when they are not runtime application code.
 
 ## Local Contracts
