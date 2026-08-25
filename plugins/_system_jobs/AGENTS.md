@@ -12,7 +12,7 @@
 - `tools/system_jobs.py` owns agent-facing job operations.
 - `skills/system-jobs/SKILL.md` owns agent workflow guidance.
 - `webui/` owns the System Jobs dashboard.
-- `extensions/webui/_sidebar-quick-actions-main-start/` owns the sidebar entry point.
+- `extensions/webui/sidebar-quick-actions-main-start/` owns the sidebar entry point.
 
 ## Local Contracts
 
