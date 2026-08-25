@@ -2,7 +2,7 @@
 let
   ps = pkgs.python312Packages;
 
-  # Keep the two known flaky upstream checks local to the dependency cones that
+  # Keep known flaky upstream checks local to the dependency cones that
   # actually consume them. Overriding the entire Python package fixed point
   # changes the interpreter dependency of otherwise unrelated packages and can
   # force large cached packages such as torch/torchaudio to rebuild in CI.
@@ -37,6 +37,20 @@ let
   patchedUnstructured = ps.unstructured.override {
     deepdiff = patchedDeepdiff;
     unstructured-client = patchedUnstructuredClient;
+  };
+
+  patchedAccelerate = ps.accelerate.overridePythonAttrs (old: {
+    # The CPU multiprocessing gradient-sync check asserts independently
+    # unsynchronized gradients are not torch.allclose(). They can naturally
+    # fall inside its rtol=1e-3 under the deterministic fixture, producing a
+    # false failure unrelated to the packaged runtime.
+    disabledTests = (old.disabledTests or [ ]) ++ [ "test_gradient_sync_cpu_multi" ];
+  });
+  patchedSentenceTransformers = ps.sentence-transformers.override {
+    # Accelerate is used here through sentence-transformers' optional train
+    # dependency / native test inputs; keep the override out of the global
+    # Python package fixed point and leave canonical torch packages untouched.
+    accelerate = patchedAccelerate;
   };
 
   patchright = ps.buildPythonPackage {
@@ -141,13 +155,14 @@ let
     langchainCore litellm lxml-html-clean markdown markdownify mcp
     nest-asyncio newspaper3k openai openai-whisper paramiko pathspec
     pdf2image psutil pydantic pymupdf pypdf pytesseract python-dotenv
-    python-socketio pytz sentence-transformers simpleeval soundfile
+    python-socketio pytz simpleeval soundfile
     tiktoken uvicorn watchdog webcolors wsproto
     pytest pytest-asyncio pytest-mock
   ]) ++ [
     patchedFastmcp
     patchedUnstructured
     patchedUnstructuredClient
+    patchedSentenceTransformers
     patchright
   ];
 in
