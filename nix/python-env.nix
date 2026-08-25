@@ -1,13 +1,19 @@
 { pkgs }:
 let
-  # `inquirer` has one interactive pexpect acceptance test that intermittently
-  # times out in the headless Nix/GitHub Actions sandbox. Override the Python
-  # package scope so transitive users (chalice -> aioboto3 -> ...) see the same
-  # package, while retaining all other inquirer and dependency checks.
+  # A few upstream dependency checks are nondeterministic in the loaded,
+  # headless Nix/GitHub Actions sandbox. Override the Python package scope so
+  # transitive users see the same packages while retaining every deterministic
+  # dependency check and all Symbolics tests.
   python = pkgs.python312.override {
     packageOverrides = _final: prev: {
       inquirer = prev.inquirer.overridePythonAttrs (old: {
+        # Interactive pexpect acceptance check can time out without a real TTY.
         disabledTests = (old.disabledTests or [ ]) ++ [ "test_default_input" ];
+      });
+      uuid6 = prev.uuid6.overridePythonAttrs (old: {
+        # Compares two independently sampled wall-clock UUID timestamps within
+        # millisecond-scale tolerance and flakes under loaded CI scheduling.
+        disabledTests = (old.disabledTests or [ ]) ++ [ "test_time" ];
       });
     };
   };
