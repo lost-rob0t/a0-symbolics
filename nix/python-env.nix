@@ -1,23 +1,44 @@
 { pkgs }:
 let
-  # A few upstream dependency checks are nondeterministic in the loaded,
-  # headless Nix/GitHub Actions sandbox. Override the Python package scope so
-  # transitive users see the same packages while retaining every deterministic
-  # dependency check and all Symbolics tests.
-  python = pkgs.python312.override {
-    packageOverrides = _final: prev: {
-      inquirer = prev.inquirer.overridePythonAttrs (old: {
-        # Interactive pexpect acceptance check can time out without a real TTY.
-        disabledTests = (old.disabledTests or [ ]) ++ [ "test_default_input" ];
-      });
-      uuid6 = prev.uuid6.overridePythonAttrs (old: {
-        # Compares two independently sampled wall-clock UUID timestamps within
-        # millisecond-scale tolerance and flakes under loaded CI scheduling.
-        disabledTests = (old.disabledTests or [ ]) ++ [ "test_time" ];
-      });
-    };
+  ps = pkgs.python312Packages;
+
+  # Keep the two known flaky upstream checks local to the dependency cones that
+  # actually consume them. Overriding the entire Python package fixed point
+  # changes the interpreter dependency of otherwise unrelated packages and can
+  # force large cached packages such as torch/torchaudio to rebuild in CI.
+  patchedInquirer = ps.inquirer.overridePythonAttrs (old: {
+    # Interactive pexpect acceptance check can time out without a real TTY.
+    disabledTests = (old.disabledTests or [ ]) ++ [ "test_default_input" ];
+  });
+  patchedChalice = ps.chalice.override {
+    inquirer = patchedInquirer;
   };
-  ps = python.pkgs;
+  patchedAioboto3 = ps.aioboto3.override {
+    chalice = patchedChalice;
+  };
+  patchedPyKeyValueAio = ps.py-key-value-aio.override {
+    aioboto3 = patchedAioboto3;
+  };
+  patchedFastmcp = ps.fastmcp.override {
+    py-key-value-aio = patchedPyKeyValueAio;
+  };
+
+  patchedUuid6 = ps.uuid6.overridePythonAttrs (old: {
+    # Compares two independently sampled wall-clock UUID timestamps within
+    # millisecond-scale tolerance and flakes under loaded CI scheduling.
+    disabledTests = (old.disabledTests or [ ]) ++ [ "test_time" ];
+  });
+  patchedDeepdiff = ps.deepdiff.override {
+    uuid6 = patchedUuid6;
+  };
+  patchedUnstructuredClient = ps.unstructured-client.override {
+    deepdiff = patchedDeepdiff;
+  };
+  patchedUnstructured = ps.unstructured.override {
+    deepdiff = patchedDeepdiff;
+    unstructured-client = patchedUnstructuredClient;
+  };
+
   patchright = ps.buildPythonPackage {
     pname = "patchright";
     version = "1.61.2";
@@ -113,16 +134,21 @@ let
     doCheck = false;
     dontCheckRuntimeDeps = true;
   };
-  packages = with ps; [
+  packages = (with ps; [
     a2wsgi aiogram asgiref beautifulsoup4 boto3 chardet crontab
-    duckduckgoSearch exchangelib faiss-cpu fastmcp flask gitpython
+    duckduckgoSearch exchangelib faiss-cpu flask gitpython
     giturlparse html2text imapclient langchain langchainCommunity
     langchainCore litellm lxml-html-clean markdown markdownify mcp
     nest-asyncio newspaper3k openai openai-whisper paramiko pathspec
     pdf2image psutil pydantic pymupdf pypdf pytesseract python-dotenv
     python-socketio pytz sentence-transformers simpleeval soundfile
-    tiktoken unstructured unstructured-client uvicorn watchdog webcolors
-    wsproto patchright pytest pytest-asyncio pytest-mock
+    tiktoken uvicorn watchdog webcolors wsproto
+    pytest pytest-asyncio pytest-mock
+  ]) ++ [
+    patchedFastmcp
+    patchedUnstructured
+    patchedUnstructuredClient
+    patchright
   ];
 in
-python.withPackages (_: packages)
+pkgs.python312.withPackages (_: packages)
