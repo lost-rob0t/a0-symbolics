@@ -2,57 +2,6 @@
 let
   ps = pkgs.python312Packages;
 
-  # Keep known flaky upstream checks local to the dependency cones that
-  # actually consume them. Overriding the entire Python package fixed point
-  # changes the interpreter dependency of otherwise unrelated packages and can
-  # force large cached packages such as torch/torchaudio to rebuild in CI.
-  patchedInquirer = ps.inquirer.overridePythonAttrs (old: {
-    # Interactive pexpect acceptance check can time out without a real TTY.
-    disabledTests = (old.disabledTests or [ ]) ++ [ "test_default_input" ];
-  });
-  patchedChalice = ps.chalice.override {
-    inquirer = patchedInquirer;
-  };
-  patchedAioboto3 = ps.aioboto3.override {
-    chalice = patchedChalice;
-  };
-  patchedPyKeyValueAio = ps.py-key-value-aio.override {
-    aioboto3 = patchedAioboto3;
-  };
-  patchedFastmcp = ps.fastmcp.override {
-    py-key-value-aio = patchedPyKeyValueAio;
-  };
-
-  patchedUuid6 = ps.uuid6.overridePythonAttrs (old: {
-    # Compares two independently sampled wall-clock UUID timestamps within
-    # millisecond-scale tolerance and flakes under loaded CI scheduling.
-    disabledTests = (old.disabledTests or [ ]) ++ [ "test_time" ];
-  });
-  patchedDeepdiff = ps.deepdiff.override {
-    uuid6 = patchedUuid6;
-  };
-  patchedUnstructuredClient = ps.unstructured-client.override {
-    deepdiff = patchedDeepdiff;
-  };
-  patchedUnstructured = ps.unstructured.override {
-    deepdiff = patchedDeepdiff;
-    unstructured-client = patchedUnstructuredClient;
-  };
-
-  patchedAccelerate = ps.accelerate.overridePythonAttrs (old: {
-    # The CPU multiprocessing gradient-sync check asserts independently
-    # unsynchronized gradients are not torch.allclose(). They can naturally
-    # fall inside its rtol=1e-3 under the deterministic fixture, producing a
-    # false failure unrelated to the packaged runtime.
-    disabledTests = (old.disabledTests or [ ]) ++ [ "test_gradient_sync_cpu_multi" ];
-  });
-  patchedSentenceTransformers = ps.sentence-transformers.override {
-    # Accelerate is used here through sentence-transformers' optional train
-    # dependency / native test inputs; keep the override out of the global
-    # Python package fixed point and leave canonical torch packages untouched.
-    accelerate = patchedAccelerate;
-  };
-
   patchright = ps.buildPythonPackage {
     pname = "patchright";
     version = "1.61.2";
@@ -150,20 +99,14 @@ let
   };
   packages = (with ps; [
     a2wsgi aiogram asgiref beautifulsoup4 boto3 chardet crontab
-    duckduckgoSearch exchangelib faiss-cpu flask gitpython
+    duckduckgoSearch exchangelib faiss-cpu fastmcp flask gitpython
     giturlparse html2text imapclient langchain langchainCommunity
     langchainCore litellm lxml-html-clean markdown markdownify mcp
     nest-asyncio newspaper3k openai openai-whisper paramiko pathspec
     pdf2image psutil pydantic pymupdf pypdf pytesseract python-dotenv
-    python-socketio pytz simpleeval soundfile
-    tiktoken uvicorn watchdog webcolors wsproto
-    pytest pytest-asyncio pytest-mock
-  ]) ++ [
-    patchedFastmcp
-    patchedUnstructured
-    patchedUnstructuredClient
-    patchedSentenceTransformers
-    patchright
-  ];
+    python-socketio pytz sentence-transformers simpleeval soundfile
+    tiktoken unstructured unstructured-client uvicorn watchdog webcolors
+    wsproto pytest pytest-asyncio pytest-mock
+  ]) ++ [ patchright ];
 in
 pkgs.python312.withPackages (_: packages)
