@@ -91,19 +91,49 @@ jobs:
             exit 1
           fi
 
+      - name: Prepare focused Agent Zero runtime layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/usr" "$GITHUB_WORKSPACE/tmp"
+          if [ -e /a0 ] || [ -L /a0 ]; then
+            test "$(readlink -f /a0)" = "$GITHUB_WORKSPACE"
+          else
+            sudo ln -s "$GITHUB_WORKSPACE" /a0
+          fi
+          test -w "$GITHUB_WORKSPACE/usr"
+          test -w "$GITHUB_WORKSPACE/tmp"
+          test "$(readlink -f /a0)" = "$GITHUB_WORKSPACE"
+
       - name: Focused runtime-mode and bridge tests
         shell: bash
         run: |
           set -euo pipefail
           export PATH="$SYMBOLICS_TEST_PYTHON/bin:$PATH"
           command -v swipl >/dev/null
-          "$SYMBOLICS_TEST_PYTHON/bin/python" -m pytest -q --durations=20 \
-            plugins/_symbolics/tests \
-            plugins/_prolog_context_compiler/tests \
-            plugins/_prolog_rlm/tests \
-            tests/test_default_prompt_budget.py \
-            tests/test_plugin_activation_ui.py \
-            2>&1 | tee "$RUNNER_TEMP/symbolics-focused-pytest.log"
+          {
+            echo "== Native/default contracts =="
+            "$SYMBOLICS_TEST_PYTHON/bin/python" -m pytest -q --durations=20 \
+              plugins/_symbolics/tests \
+              plugins/_prolog_rlm/tests \
+              tests/test_default_prompt_budget.py \
+              tests/test_plugin_activation_ui.py
+
+            echo "== Activate the paired RLM control plane =="
+            export A0_SYMBOLICS_MODE=rlm
+            "$SYMBOLICS_TEST_PYTHON/bin/python" - <<'PY'
+          from helpers import plugins
+          from plugins._symbolics.helpers.mode import sync_runtime_mode
+
+          assert sync_runtime_mode() == "rlm"
+          assert plugins.get_toggle_state("_prolog_rlm") == "enabled"
+          assert plugins.get_toggle_state("_prolog_context_compiler") == "enabled"
+          PY
+
+            echo "== RLM context/compiler contracts =="
+            "$SYMBOLICS_TEST_PYTHON/bin/python" -m pytest -q --durations=20 \
+              plugins/_prolog_context_compiler/tests
+          } 2>&1 | tee "$RUNNER_TEMP/symbolics-focused-pytest.log"
 
       - name: Export focused pytest evidence
         if: always()
