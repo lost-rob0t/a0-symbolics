@@ -102,7 +102,17 @@ jobs:
             plugins/_prolog_context_compiler/tests \
             plugins/_prolog_rlm/tests \
             tests/test_default_prompt_budget.py \
-            tests/test_plugin_activation_ui.py
+            tests/test_plugin_activation_ui.py \
+            2>&1 | tee "$RUNNER_TEMP/symbolics-focused-pytest.log"
+
+      - name: Export focused pytest evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: symbolics-focused-pytest-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/symbolics-focused-pytest.log
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Nix integration gate
         run: nix flake check -L
