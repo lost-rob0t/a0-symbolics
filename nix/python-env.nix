@@ -98,9 +98,9 @@ let
     dontCheckRuntimeDeps = true;
   };
   focusedPackages = (with ps; [
-    cryptography flask gitpython giturlparse litellm markdown nest-asyncio pathspec pillow pydantic
-    python-dotenv pytest pytest-asyncio pytest-mock pytz simpleeval tiktoken
-    watchdog webcolors
+    crontab cryptography flask gitpython giturlparse litellm markdown nest-asyncio paramiko
+    pathspec pillow pydantic python-dotenv pytest pytest-asyncio pytest-mock pytz
+    simpleeval tiktoken watchdog webcolors
   ]) ++ [ langchainCore langchain ];
   fullPackages = (with ps; [
     a2wsgi aiogram asgiref beautifulsoup4 boto3 chardet crontab
