@@ -101,7 +101,7 @@ let
     cryptography flask gitpython giturlparse litellm markdown nest-asyncio pillow pydantic
     python-dotenv pytest pytest-asyncio pytest-mock pytz simpleeval tiktoken
     watchdog webcolors
-  ]) ++ [ langchainCore ];
+  ]) ++ [ langchainCore langchain ];
   fullPackages = (with ps; [
     a2wsgi aiogram asgiref beautifulsoup4 boto3 chardet crontab
     duckduckgoSearch exchangelib faiss-cpu fastmcp flask gitpython
