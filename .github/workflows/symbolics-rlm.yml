@@ -76,11 +76,22 @@ jobs:
           git -C "$RUNNER_TEMP/prolog-rlm" checkout --quiet "$rev"
           echo "PROLOG_RLM_TEST_ROOT=$RUNNER_TEMP/prolog-rlm" >> "$GITHUB_ENV"
 
+      - name: Build focused Symbolics test environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_python="$(nix build --no-link --print-out-paths -f nix/symbolics-test-env.nix)"
+          echo "SYMBOLICS_TEST_PYTHON=$test_python" >> "$GITHUB_ENV"
+          if nix path-info -r "$test_python" | grep -Eiq '/(torch|torchaudio|openai-whisper|sentence-transformers)-'; then
+            echo "Focused Symbolics test closure unexpectedly contains heavyweight ML runtime packages." >&2
+            exit 1
+          fi
+
       - name: Focused runtime-mode and bridge tests
         shell: bash
         run: |
           set -euo pipefail
-          nix develop --command pytest -q --durations=20 \
+          "$SYMBOLICS_TEST_PYTHON/bin/pytest" -q --durations=20 \
             plugins/_symbolics/tests \
             plugins/_prolog_context_compiler/tests \
             plugins/_prolog_rlm/tests \
