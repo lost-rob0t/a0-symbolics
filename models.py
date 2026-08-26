@@ -41,7 +41,6 @@ from langchain_core.messages import (
     SystemMessage,
 )
 from langchain.embeddings.base import Embeddings
-from sentence_transformers import SentenceTransformer
 from pydantic import ConfigDict
 
 
@@ -838,6 +837,8 @@ class LocalSentenceTransformerWrapper(Embeddings):
         model_config: Optional[ModelConfig] = None,
         **kwargs: Any,
     ):
+        from sentence_transformers import SentenceTransformer
+
         # Clean common user-input mistakes
         model = model.strip().strip('"').strip("'")
 
