@@ -98,7 +98,7 @@ let
     dontCheckRuntimeDeps = true;
   };
   focusedPackages = (with ps; [
-    cryptography flask gitpython giturlparse litellm markdown nest-asyncio pydantic
+    cryptography flask gitpython giturlparse litellm markdown nest-asyncio pillow pydantic
     python-dotenv pytest pytest-asyncio pytest-mock pytz simpleeval tiktoken
     watchdog webcolors
   ]) ++ [ langchainCore ];
