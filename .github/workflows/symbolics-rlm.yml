@@ -95,6 +95,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export PATH="$SYMBOLICS_TEST_PYTHON/bin:$PATH"
+          command -v swipl >/dev/null
           "$SYMBOLICS_TEST_PYTHON/bin/python" -m pytest -q --durations=20 \
             plugins/_symbolics/tests \
             plugins/_prolog_context_compiler/tests \
