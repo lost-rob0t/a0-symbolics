@@ -1,4 +1,4 @@
-{ pkgs }:
+{ pkgs, focused ? false }:
 let
   ps = pkgs.python312Packages;
 
@@ -97,7 +97,11 @@ let
     doCheck = false;
     dontCheckRuntimeDeps = true;
   };
-  packages = (with ps; [
+  focusedPackages = (with ps; [
+    flask litellm markdown pydantic python-dotenv pytest pytest-asyncio
+    pytest-mock simpleeval tiktoken webcolors
+  ]) ++ [ langchainCore ];
+  fullPackages = (with ps; [
     a2wsgi aiogram asgiref beautifulsoup4 boto3 chardet crontab
     duckduckgoSearch exchangelib faiss-cpu fastmcp flask gitpython
     giturlparse html2text imapclient langchain langchainCommunity
@@ -108,5 +112,6 @@ let
     tiktoken unstructured unstructured-client uvicorn watchdog webcolors
     wsproto pytest pytest-asyncio pytest-mock
   ]) ++ [ patchright ];
+  packages = if focused then focusedPackages else fullPackages;
 in
 pkgs.python312.withPackages (_: packages)
