@@ -98,7 +98,7 @@ let
     dontCheckRuntimeDeps = true;
   };
   focusedPackages = (with ps; [
-    crontab cryptography faiss-cpu flask gitpython giturlparse litellm markdown nest-asyncio paramiko
+    crontab cryptography faiss-cpu flask gitpython giturlparse litellm markdown mcp nest-asyncio paramiko
     pathspec pillow pydantic python-dotenv python-socketio pytest pytest-asyncio pytest-mock
     pytz simpleeval tiktoken watchdog webcolors
   ]) ++ [ langchainCore langchain langchainCommunity ];
