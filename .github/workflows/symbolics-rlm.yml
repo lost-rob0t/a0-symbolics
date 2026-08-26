@@ -97,7 +97,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          "$SYMBOLICS_TEST_PYTHON/bin/pytest" -q --durations=20 \
+          "$SYMBOLICS_TEST_PYTHON/bin/python" -m pytest -q --durations=20 \
             plugins/_symbolics/tests \
             plugins/_prolog_context_compiler/tests \
             plugins/_prolog_rlm/tests \
