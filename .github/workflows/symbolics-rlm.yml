@@ -121,14 +121,7 @@ jobs:
 
             echo "== Activate the paired RLM control plane =="
             export A0_SYMBOLICS_MODE=rlm
-            "$SYMBOLICS_TEST_PYTHON/bin/python" - <<'PY'
-          from helpers import plugins
-          from plugins._symbolics.helpers.mode import sync_runtime_mode
-
-          assert sync_runtime_mode() == "rlm"
-          assert plugins.get_toggle_state("_prolog_rlm") == "enabled"
-          assert plugins.get_toggle_state("_prolog_context_compiler") == "enabled"
-          PY
+            "$SYMBOLICS_TEST_PYTHON/bin/python" -c 'from helpers import plugins; from plugins._symbolics.helpers.mode import sync_runtime_mode; assert sync_runtime_mode() == "rlm"; assert plugins.get_toggle_state("_prolog_rlm") == "enabled"; assert plugins.get_toggle_state("_prolog_context_compiler") == "enabled"'
 
             echo "== RLM context/compiler contracts =="
             "$SYMBOLICS_TEST_PYTHON/bin/python" -m pytest -q --durations=20 \
