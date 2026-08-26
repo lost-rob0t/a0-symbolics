@@ -101,7 +101,7 @@ let
     crontab cryptography flask gitpython giturlparse litellm markdown nest-asyncio paramiko
     pathspec pillow pydantic python-dotenv python-socketio pytest pytest-asyncio pytest-mock
     pytz simpleeval tiktoken watchdog webcolors
-  ]) ++ [ langchainCore langchain ];
+  ]) ++ [ langchainCore langchain langchainCommunity ];
   fullPackages = (with ps; [
     a2wsgi aiogram asgiref beautifulsoup4 boto3 chardet crontab
     duckduckgoSearch exchangelib faiss-cpu fastmcp flask gitpython
