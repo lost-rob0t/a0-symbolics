@@ -29,9 +29,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  integration:
+  focused:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 90
     steps:
       - name: Checkout Symbolics exact candidate
         uses: actions/checkout@v5
@@ -136,6 +136,21 @@ jobs:
           path: ${{ runner.temp }}/symbolics-focused-pytest.log
           if-no-files-found: ignore
           retention-days: 3
+
+  nix-integration:
+    needs: focused
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout Symbolics exact candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31.11.1
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Nix integration gate
         run: nix flake check -L
