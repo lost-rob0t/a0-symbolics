@@ -1,0 +1,58 @@
+* Run identity
+- Consumed issue :: operator request (2026-08-27)
+- Branch :: =fix/api-startup-smoke=
+- RAGE start commit :: =8a99b8d56f06129bde4ff858a4c11d76d8e72322=
+
+* Analyze
+- The local Symbolics container's healthcheck probes =/= and a cached Prolog
+  smoke file, while the Python startup monitor probes =/api/health=. This leaves
+  the operator verification path weaker than the server's own readiness path.
+- Live evidence :: the running =agent-zero= container is healthy with zero
+  restarts, and =GET /api/health= returns HTTP 200 with the documented
+  =gitinfo= and =error= fields.
+- The =gitnexus= and =prolog-mcp= log lines are configured MCP client command
+  lookup failures. They are not caused by API route registration and are outside
+  this test-focused change.
+- Duplicate Prolog evidence :: chat =foPgt1EN= records one successful
+  =prolog_rlm= status result followed by two identical empty-argument calls and
+  the repeat-loop breaker. The saved Responses state uses OpenRouter generation
+  IDs, which are not reusable conversation state.
+- Authoritative provider contract :: OpenRouter's Responses API is stateless and
+  rejects =store=true= and =previous_response_id=; the client must send full
+  history for every turn.
+
+* Design
+- Make the reusable Symbolics smoke probe call the local =/api/health= route and
+  validate its JSON object before reporting the Prolog integration result.
+- Make the container healthcheck and host-side =scripts verify= call
+  =/api/health= explicitly, so both readiness paths exercise the real API.
+- Add an opt-in live pytest module controlled by =A0_SYMBOLICS_URL=. The default
+  suite remains deterministic and service-free; when configured, connection,
+  status, content type, and response-shape failures are test failures.
+- Force OpenRouter Responses turns to client-side stateless mode and add a
+  regression test proving that local full history is sent instead of generation
+  continuation state. This prevents a successful Prolog tool result from being
+  followed by repeated identical tool calls.
+- Non-goal :: do not make configured external MCP commands part of startup or
+  install user-specific MCP servers into the image.
+
+* Acceptance
+- [X] API smoke rejects unavailable, non-200, non-JSON, and malformed health
+  responses.
+- [X] Container and local verification paths call =/api/health=.
+- [X] An explicitly configured live URL is tested through the public HTTP API.
+- [X] OpenRouter Responses sends full local history without provider state.
+- [X] Default pytest and focused Docker tests remain green.
+
+* Verification
+- Focused Symbolics tests :: 21 passed, 1 skipped (default live test).
+- Live API test :: 1 passed against the running container at its published URL.
+- Updated in-container smoke :: API health, Prolog-RLM readiness, and context
+  compiler integration passed.
+- Updated healthcheck :: passed against the running container; it has zero
+  restarts and reports healthy.
+- Host verification :: =./scripts/verify= passed.
+- Framework runtime :: patched OpenRouter transport assertion passed under
+  =/opt/venv-a0=; the runtime image does not include pytest.
+- Full host pytest :: blocked at collection because the bare host Python lacks
+  framework dependencies and attempts to collect ignored =usr/= runtime state.

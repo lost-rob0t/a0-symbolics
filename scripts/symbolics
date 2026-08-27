@@ -100,6 +100,9 @@ verify() {
 
   url="$(published_url)"
   curl --fail --silent --show-error --max-time 10 "$url/" >/dev/null
+  curl --fail --silent --show-error --max-time 10 \
+    --header 'Accept: application/json' \
+    "$url/api/health" >/dev/null
   compose exec --no-TTY agent-zero test -d /a0/usr/projects
   compose exec --no-TTY agent-zero test -d /a0/usr/workdir
   compose exec --no-TTY agent-zero swipl --version
