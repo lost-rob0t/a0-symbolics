@@ -4,6 +4,7 @@ set -euo pipefail
 readonly REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly COMPOSE_DIR="$REPO_ROOT/docker/symbolics"
 readonly PROJECT_NAME="${A0_SYMBOLICS_PROJECT:-a0-symbolics}"
+readonly BUILD_MEMORY="${A0_SYMBOLICS_BUILD_MEMORY:-8g}"
 
 usage() {
   printf 'Usage: %s [build|up|down] [OPTIONS]\n' "${0##*/}"
@@ -49,12 +50,13 @@ fi
 
 case "$command" in
   build)
-    exec "${compose_args[@]}" build "$@"
+    exec "${compose_args[@]}" build --memory "$BUILD_MEMORY" "$@"
     ;;
   down)
     exec "${compose_args[@]}" down "$@"
     ;;
   up)
-    exec "${compose_args[@]}" up --build -d "$@"
+    "${compose_args[@]}" build --memory "$BUILD_MEMORY"
+    exec "${compose_args[@]}" up -d "$@"
     ;;
 esac
