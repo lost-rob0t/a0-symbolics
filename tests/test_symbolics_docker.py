@@ -34,8 +34,16 @@ def test_symbolics_health_rejects_failed_supervisor_processes():
         encoding="utf-8"
     )
 
+    assert "http://127.0.0.1:80/api/health" in healthcheck
     assert "supervisorctl status" in healthcheck
     assert '$2 != "RUNNING"' in healthcheck
+
+
+def test_symbolics_verification_calls_api_health():
+    launcher = (ROOT / "scripts" / "symbolics").read_text(encoding="utf-8")
+
+    assert '"$url/api/health"' in launcher
+    assert "--header 'Accept: application/json'" in launcher
 
 
 def test_symbolics_local_compose_is_gitignored():
@@ -126,5 +134,7 @@ def test_root_launch_uses_stable_symbolics_compose_project():
 
     assert launcher.stat().st_mode & stat.S_IXUSR
     assert 'A0_SYMBOLICS_PROJECT:-a0-symbolics' in text
+    assert 'A0_SYMBOLICS_BUILD_MEMORY:-8g' in text
+    assert 'build --memory "$BUILD_MEMORY"' in text
     assert "docker compose --project-name" in text
-    assert 'up --build -d "$@"' in text
+    assert 'up -d "$@"' in text
