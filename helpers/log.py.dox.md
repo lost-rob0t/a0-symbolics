@@ -38,6 +38,7 @@
 - Update this file whenever public functions, classes, persistence behavior, path/security assumptions, side effects, or cross-module contracts change.
 - Secret masking is a confidentiality boundary: secret-manager acquisition or per-value masking failure must never return the original candidate string/object to log output, progress, state snapshots, or persistence.
 - When the secret manager itself is unavailable, all string leaves in the candidate structure are replaced with the fixed `MASKING_FAILURE_REDACTION` sentinel because the runtime cannot prove any candidate string is safe.
+- String dictionary keys are masked alongside values; when the secret manager is unavailable, string keys are replaced with the fixed sentinel so mapping structure cannot expose a candidate secret.
 - When only one `mask_values()` call fails, redact that leaf and continue masking sibling leaves so one failure does not expose the parent object or unnecessarily discard safe siblings.
 - Masking-failure diagnostics may include only the exception type and a fixed message; never include the exception message or candidate value because either may contain secret material.
 - Observed side-effect areas: filesystem writes, filesystem deletion, settings/state persistence, secret handling, scheduler state.

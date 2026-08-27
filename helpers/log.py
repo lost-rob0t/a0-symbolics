@@ -425,7 +425,14 @@ class Log:
         if isinstance(obj, str):
             return cast(T, MASKING_FAILURE_REDACTION)
         if isinstance(obj, dict):
-            return cast(T, {k: Log._redact_masking_failure(v) for k, v in obj.items()})
+            return cast(
+                T,
+                {
+                    MASKING_FAILURE_REDACTION if isinstance(k, str) else k:
+                    Log._redact_masking_failure(v)
+                    for k, v in obj.items()
+                },
+            )
         if isinstance(obj, list):
             return cast(T, [Log._redact_masking_failure(item) for item in obj])
         if isinstance(obj, tuple):
@@ -452,7 +459,9 @@ class Log:
             return cast(
                 T,
                 {
-                    k: self._mask_recursive_with_manager(v, secrets_mgr)
+                    self._mask_recursive_with_manager(k, secrets_mgr)
+                    if isinstance(k, str)
+                    else k: self._mask_recursive_with_manager(v, secrets_mgr)
                     for k, v in obj.items()
                 },
             )
