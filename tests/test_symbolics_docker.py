@@ -49,6 +49,7 @@ def test_symbolics_image_keeps_nix_binary_image_owned():
 
     assert "apt-get install -y --no-install-recommends nix-bin" in dockerfile
     assert "ENV NIX_REMOTE=local" in dockerfile
+    assert "RUN mkdir -p /git/agent-zero/usr/plugins" in dockerfile
     assert 'CMD ["/opt/a0-symbolics/initialize.sh"]' in dockerfile
 
 
