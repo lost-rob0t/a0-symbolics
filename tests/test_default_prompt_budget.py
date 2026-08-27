@@ -81,9 +81,12 @@ async def test_default_agent0_prompt_budget_and_guardrails():
     assert "### code_execution_tool" in system_text
     # These compact adapters are owned by the Prolog-RLM plugin and must not
     # leak into stock native mode when the symbolic control plane is disabled.
-    assert "### exec" not in system_text
-    assert "### git" not in system_text
-    assert "### patch" not in system_text
+    # Match complete heading lines so native subheadings such as `#### patch`
+    # do not masquerade as the RLM adapter's `### patch` tool heading.
+    system_lines = set(system_text.splitlines())
+    assert "### exec" not in system_lines
+    assert "### git" not in system_lines
+    assert "### patch" not in system_lines
     assert "Input schema for tool_args:" not in system_text
     assert "`memory_load`: search stored memories" in system_text
     assert "informative but tight" in system_text
