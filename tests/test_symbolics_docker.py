@@ -127,3 +127,4 @@ def test_root_launch_uses_stable_symbolics_compose_project():
     assert launcher.stat().st_mode & stat.S_IXUSR
     assert 'A0_SYMBOLICS_PROJECT:-a0-symbolics' in text
     assert "docker compose --project-name" in text
+    assert 'up --build -d "$@"' in text

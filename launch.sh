@@ -55,6 +55,6 @@ case "$command" in
     exec "${compose_args[@]}" down "$@"
     ;;
   up)
-    exec "${compose_args[@]}" up -d "$@"
+    exec "${compose_args[@]}" up --build -d "$@"
     ;;
 esac
