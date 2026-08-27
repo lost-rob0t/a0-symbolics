@@ -26,6 +26,7 @@
 - Changing a model provider in the settings UI must clear `api_base` and `kwargs` because both may be provider-specific.
 - Repair provider-specific model-config aliases at the model-config read/build boundary; keep provider-specific repairs out of provider-agnostic core wrappers such as `models.py`.
 - OpenRouter's extended Responses reasoning efforts are request-scoped compatibility metadata. Installing the compatibility hook must not mutate provider-agnostic global effort sets.
+- OpenRouter Responses requests are stateless; use full client-side input history and never send `store` or `previous_response_id` continuation state.
 - `modelConfig.createPresetEditor()` owns local preset drafts, row actions, and stable UI-only row keys so deletion or renaming cannot rebind nested model fields.
 - The preset editor maps each model provider's API-key field to the shared API-key store; saving the editor persists dirty keys separately and never writes secrets into preset YAML.
 - The compact chat selector label combines the effective preset with only the leaf name of its main model; utility and provider text stay out of the closed selector.
