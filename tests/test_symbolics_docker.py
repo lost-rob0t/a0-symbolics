@@ -117,3 +117,12 @@ def test_symbolics_operator_scripts_are_executable_and_bound_build_memory():
         wrapper = ROOT / "scripts" / name
         assert wrapper.stat().st_mode & stat.S_IXUSR
         assert 'exec "$(dirname "${BASH_SOURCE[0]}")/symbolics"' in wrapper.read_text(encoding="utf-8")
+
+
+def test_root_launch_uses_stable_symbolics_compose_project():
+    launcher = ROOT / "launch.sh"
+    text = launcher.read_text(encoding="utf-8")
+
+    assert launcher.stat().st_mode & stat.S_IXUSR
+    assert 'A0_SYMBOLICS_PROJECT:-a0-symbolics' in text
+    assert "docker compose --project-name" in text
