@@ -34,8 +34,16 @@ def test_symbolics_health_rejects_failed_supervisor_processes():
         encoding="utf-8"
     )
 
+    assert "http://127.0.0.1:80/api/health" in healthcheck
     assert "supervisorctl status" in healthcheck
     assert '$2 != "RUNNING"' in healthcheck
+
+
+def test_symbolics_verification_calls_api_health():
+    launcher = (ROOT / "scripts" / "symbolics").read_text(encoding="utf-8")
+
+    assert '"$url/api/health"' in launcher
+    assert "--header 'Accept: application/json'" in launcher
 
 
 def test_symbolics_local_compose_is_gitignored():
