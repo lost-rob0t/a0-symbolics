@@ -85,3 +85,20 @@
   container healthcheck.
 - Supervised runtime :: all six processes =RUNNING=, zero restarts, no startup
   =FATAL=, =ModuleNotFoundError=, OOM, or killed-process log markers.
+
+* Follow-up refresh
+- Requested :: Refresh the consumed Prolog-RLM source and check API drift on
+  2026-08-27.
+- Remote main :: =2e1264d80d02fecfb9f946e1328caaf1053e7a3b=.
+- Agent Zero flake input and lock :: both now resolve to remote main at that
+  exact revision.
+- Local Prolog-RLM checkout :: clean feature branch containing remote main as an
+  ancestor; its two additional commits change only research/test files, not
+  =prolog/= source.
+- API conformance :: the current-source Python bridge tests passed 5/5, and the
+  current-source Agent Zero pack passed 3/3 PlUnit tests. No consumed predicate
+  signature drift was observed.
+- Nix verification :: flake evaluation and the Prolog-only check passed under a
+  single-job, 8 GiB virtual-memory limit. The full plugin-import check was not
+  completed because its 57-derivation Python closure exceeded the available
+  execution window even with that limit.
