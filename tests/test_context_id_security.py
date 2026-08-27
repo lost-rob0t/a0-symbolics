@@ -140,3 +140,32 @@ def test_message_directory_symlink_cannot_escape_chat(monkeypatch, tmp_path: Pat
 
     with pytest.raises(ValueError, match="outside chat storage"):
         persist_chat.get_chat_msg_files_folder("safeid")
+
+
+def test_load_rejects_persisted_id_that_does_not_match_chat_folder(
+    monkeypatch, capsys
+) -> None:
+    monkeypatch.setattr(persist_chat, "_convert_v080_chats", lambda: None)
+    monkeypatch.setattr(
+        persist_chat.files,
+        "list_files",
+        lambda folder, pattern="*": ["safeid"],
+    )
+    monkeypatch.setattr(
+        persist_chat.files,
+        "exists",
+        lambda path: True,
+    )
+    monkeypatch.setattr(
+        persist_chat.files,
+        "read_file",
+        lambda path: '{"id": "otherid"}',
+    )
+    monkeypatch.setattr(
+        persist_chat,
+        "_deserialize_context",
+        lambda data: pytest.fail("mismatched context reached deserialization"),
+    )
+
+    assert persist_chat.load_tmp_chats() == []
+    assert "does not match chat folder" in capsys.readouterr().out

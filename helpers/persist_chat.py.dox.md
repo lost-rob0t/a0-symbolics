@@ -21,6 +21,7 @@
 - Message-file paths inherit the same containment contract as chat JSON paths.
 - Unsafe legacy chat folder/file names are reported and skipped; they are never resolved or deleted as filesystem paths.
 - Persisted `chat.json` IDs are validated before constructing `AgentContext` objects. Unsafe legacy records fail that individual load without preventing other valid chats from loading.
+- When present, a persisted `chat.json` ID must match its containing chat folder so loading cannot detach context identity from its storage path.
 - `saved_chat_ids()` excludes/report unsafe legacy directory names instead of publishing them as live context identity.
 - Serialized chats store `agent_profile` both at context level and per serialized agent so subordinate profiles survive restart.
 - Chat saves write/fsync a same-directory temporary file, atomically replace `chat.json`, and fsync the directory.

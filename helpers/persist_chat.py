@@ -109,6 +109,10 @@ def load_tmp_chats():
         try:
             js = files.read_file(file)
             data = json.loads(js)
+            folder_name = files.basename(files.dirname(file))
+            persisted_id = data.get("id")
+            if persisted_id is not None and persisted_id != folder_name:
+                raise ValueError("persisted context id does not match chat folder")
             ctx = _deserialize_context(data)
             mark_chat_saved(ctx)
             ctxids.append(ctx.id)
