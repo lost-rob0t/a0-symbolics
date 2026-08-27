@@ -38,6 +38,7 @@
 - Start once, confirm Home Manager activation, recreate the container, and confirm the same `/nix` store and `/a0/usr/home-manager/flake.lock` are reused.
 - Confirm the example compose file has exactly two persistent mounts: `/nix` and `/a0/usr`.
 - Confirm `git check-ignore docker/symbolics/compose.yml` succeeds.
+- Run `pytest tests/test_symbolics_live_api.py` with `A0_SYMBOLICS_URL` set to the published HTTP URL to exercise the live UI and `/api/health` route.
 
 ## Child DOX Index
 
