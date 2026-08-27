@@ -50,6 +50,22 @@ def test_mask_values_failure_never_returns_original_nested_secret(monkeypatch):
     assert SECRET not in str(masked)
 
 
+def test_mask_values_failure_never_leaks_secret_dict_key(monkeypatch):
+    class BrokenSecretsManager:
+        def mask_values(self, _value):
+            raise RuntimeError("synthetic masking failure")
+
+    monkeypatch.setattr(
+        log_module,
+        "get_secrets_manager",
+        lambda _context: BrokenSecretsManager(),
+    )
+
+    masked = Log()._mask_recursive({SECRET: "ordinary value"})
+
+    assert SECRET not in str(masked)
+
+
 def test_leaf_masking_failure_redacts_only_failed_leaf(monkeypatch):
     class SelectivelyBrokenSecretsManager:
         def mask_values(self, value):
