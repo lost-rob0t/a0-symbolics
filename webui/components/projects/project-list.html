@@ -16,6 +16,13 @@
                     instructions and files.
                     You can create projects for your tasks and switch between them easily.</p>
                 <div class="projects-list-header">
+                    <label class="projects-search">
+                        <x-icon aria-hidden="true" name="search"></x-icon>
+                        <input type="search" x-model.debounce.150ms="$store.projects.projectSearch" placeholder="Search projects" />
+                        <button type="button" class="projects-search-clear" x-show="$store.projects.projectSearchActive()" @click="$store.projects.projectSearch = ''" title="Clear search">
+                            <x-icon aria-hidden="true" name="close"></x-icon>
+                        </button>
+                    </label>
                     <div x-show="$store.chats.selectedContext && $store.chats.selectedContext?.project" class="active-project-display">
                         <span style="display: inline-flex; align-items: center; gap: 0.5em;">
                             <span>Active:</span>
@@ -35,7 +42,7 @@
                     </button>
                 </div>
 
-                <template :key="project.name" x-for="project in $store.projects.projectList">
+                <template :key="project.name" x-for="project in $store.projects.filteredProjectList()">
                     <div class="projects-project-card" :class="{ 'projects-active': project.name === $store.chats.selectedContext?.project?.name }">
                         <div class="projects-project-card-header">
                             <div class="projects-project-card-info">
@@ -67,6 +74,18 @@
                             </div>
                         </div>
                         <!-- <div class="projects-project-card-description"><span x-text="project.description"></span></div> -->
+                    </div>
+                </template>
+
+                <template x-if="$store.projects.projectList.length > 0 && $store.projects.filteredProjectList().length === 0">
+                    <div class="projects-no-projects">
+                        <div class="projects-project-card-title">No projects match this search.</div>
+                    </div>
+                </template>
+
+                <template x-if="$store.projects.projectList.length > 0 && $store.projects.filteredProjectList().length === 0">
+                    <div class="projects-no-projects">
+                        <div class="projects-project-card-title">No projects match this search.</div>
                     </div>
                 </template>
 
@@ -177,6 +196,63 @@
     .projects-create-btn-top {
         float: right;
         margin: var(--spacing-xs) var(--spacing-md);
+    }
+
+    /* Projects search box */
+    .projects-search {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        min-height: 2.1rem;
+        flex: 0 1 18rem;
+        min-width: min(14rem, 100%);
+        padding: 0.25rem 0.45rem;
+        border: 1px solid var(--color-border);
+        border-radius: 7px;
+        background: var(--color-input);
+        color: var(--color-text-muted);
+    }
+
+    .projects-search .material-symbols-outlined,
+    .projects-search x-icon {
+        font-size: 16px;
+        flex-shrink: 0;
+    }
+
+    .projects-search input {
+        width: 100%;
+        min-width: 6rem;
+        border: 0;
+        background: transparent;
+        color: var(--color-text);
+        font-size: var(--font-size-small);
+        outline: none;
+        padding: 0.15rem 0;
+    }
+
+    .projects-search input::-webkit-search-cancel-button,
+    .projects-search input::-webkit-search-decoration {
+        -webkit-appearance: none;
+        appearance: none;
+        display: none;
+    }
+
+    .projects-search-clear {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.45rem;
+        height: 1.45rem;
+        flex-shrink: 0;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--color-text-muted);
+        cursor: pointer;
+    }
+
+    .projects-search-clear:hover {
+        color: var(--color-text);
     }
 
     .projects-list-header {
