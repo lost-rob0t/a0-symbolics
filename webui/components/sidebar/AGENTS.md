@@ -35,6 +35,7 @@
 - Context snapshots preserve the Alpine contexts-array and row identities while their order is stable, updating changed row metadata in place so streaming log counters do not reconcile the whole chat list. Additions, removals, reordering, and deletion tombstones must still replace the visible list; selection and parent-expansion synchronization must not publish unchanged state.
 
 - Preserve `canvas:<surface-id>` visibility entries even when a plugin is absent, so later registration restores its saved choice.
+- The chat list owns a client-side search box (shown when more than five chats exist or while searching) that filters chat names and project labels case-insensitively; during search, matching children stay reachable and their parents remain visible.
 
 ## Work Guidance
 
