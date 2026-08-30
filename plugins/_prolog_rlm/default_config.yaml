@@ -4,3 +4,6 @@ max_request_bytes: 2000000
 max_response_bytes: 4000000
 max_tool_result_chars: 50000
 openrouter_model: ""
+max_context_tokens: 32768
+max_completion_tokens: 4096
+recent_message_count: 8

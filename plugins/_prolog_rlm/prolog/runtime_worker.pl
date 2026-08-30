@@ -15,14 +15,7 @@ load_runtime(Argv) :-
         directory_file_path(Root, 'prolog/rlm.pl', Runtime),
         load_files(Runtime, [silent(true)])
     ;   use_module(library(rlm))
-    ),
-    load_agent_zero_pack.
-
-load_agent_zero_pack :-
-    source_file(main(_), Worker),
-    file_directory_name(Worker, Directory),
-    directory_file_path(Directory, 'agent_zero_tool_pack.pl', Pack),
-    load_files(Pack, [silent(true)]).
+    ).
 
 request_loop :-
     read_line_to_string(user_input, Line),
@@ -70,7 +63,7 @@ dispatch(catalog, _, Catalog) :-
         _{name:catalog, network:false},
         _{name:demo, network:false},
         _{name:context_compile, network:false},
-        _{name:tool_pack_catalog, network:false},
+        _{name:turn, network:true},
         _{name:direct, network:true},
         _{name:complete, network:true}
     ]}.
@@ -85,13 +78,27 @@ dispatch(demo, Arguments, Outcome) :-
 dispatch(context_compile, Arguments, Outcome) :-
     !,
     required_dict(Arguments, request, CompileRequest),
-    rlm:agent_zero_context_compile(CompileRequest, Outcome).
-dispatch(tool_pack_catalog, Arguments, Catalog) :-
+    rlm:agent_zero_context_compile(CompileRequest, CompileOutcome),
+    context_result(CompileOutcome, Outcome).
+dispatch(turn, Arguments, Result) :-
     !,
-    required_list(Arguments, declarations, Declarations),
-    declaration_categories(Declarations, Categories),
-    maplist(pack_manifest(Declarations), Categories, Manifests),
-    Catalog = _{categories:Categories, manifests:Manifests}.
+    required_dict(Arguments, compile_request, CompileRequest),
+    required_list(Arguments, messages, RecentMessages),
+    required_list(Arguments, tools, DeclaredTools),
+    required_text(Arguments, model, ModelText),
+    atom_string(Model, ModelText),
+    rlm:agent_zero_context_compile(CompileRequest, CompileOutcome),
+    context_result(CompileOutcome, Projection),
+    get_dict(active_tools, Projection, ActiveNames),
+    active_provider_tools(DeclaredTools, ActiveNames, ActiveTools),
+    get_dict(text, Projection, ContextText),
+    projected_messages(ContextText, RecentMessages, Messages),
+    turn_options(Arguments, ActiveTools, Options),
+    Request = model_request{messages:Messages, options:Options},
+    rlm_chain:openrouter_provider(Model, Provider0),
+    auto_tool_choice_provider(Provider0, Provider),
+    rlm_chain:model_complete(Provider, Request, ProviderOutcome),
+    turn_result(ProviderOutcome, Projection, Result).
 dispatch(direct, Arguments, Outcome) :-
     !,
     required_text(Arguments, prompt, Prompt),
@@ -106,40 +113,62 @@ dispatch(complete, Arguments, Outcome) :-
 dispatch(Action, _, _) :-
     throw(runtime_request_error(unsupported_action(Action))).
 
-pack_manifest(Declarations, Category, Manifest) :-
-    atomic_list_concat([agent_zero, Category], '_', Pack),
-    setup_call_cleanup(
-        rlm_tool:tool_registry_create(Registry),
-        ( agent_zero_tool_pack:agent_zero_tool_pack_load(
-              Registry,
-              Pack,
-              Category,
-              Declarations,
-              user:inert_host_tool,
-              LoadOutcome),
-          pack_load_result(LoadOutcome, Outcome),
-          rlm_tool:tool_discover(Registry, Schemas),
-          Manifest = _{category:Category,
-                       outcome:Outcome,
-                       schemas:Schemas}
-        ),
-        rlm_tool:tool_registry_destroy(Registry)).
+active_provider_tools(Tools, ActiveNames0, ActiveTools) :-
+    maplist(text_atom, ActiveNames0, ActiveNames),
+    include(active_provider_tool(ActiveNames), Tools, Selected),
+    maplist(provider_tool_wire, Selected, ActiveTools).
 
-pack_load_result(ok(Loaded), Loaded) :- !.
-pack_load_result(error(Error), _{status:error, error:Error}) :- !.
-pack_load_result(Other, _{status:error, error:Other}).
+active_provider_tool(ActiveNames, Tool) :-
+    is_dict(Tool),
+    get_dict(function, Tool, Function),
+    is_dict(Function),
+    get_dict(name, Function, Name0),
+    text_atom(Name0, Name),
+    memberchk(Name, ActiveNames).
 
-inert_host_tool(_, _, _) :-
-    throw(runtime_request_error(host_tool_execution_not_available)).
+provider_tool_wire(Tool0, Tool) :-
+    (   del_dict(original_name, Tool0, _, Tool1)
+    ->  Tool = Tool1
+    ;   Tool = Tool0
+    ).
 
-declaration_categories(Declarations, Categories) :-
-    findall(Category,
-            ( member(Declaration, Declarations),
-              is_dict(Declaration),
-              get_dict(category, Declaration, Category0),
-              text_atom(Category0, Category) ),
-            Categories0),
-    sort(Categories0, Categories).
+projected_messages(Context, RecentMessages,
+                   [_{role:system, content:Context}|Messages]) :-
+    maplist(provider_message, RecentMessages, Messages).
+
+provider_message(Message0, Message) :-
+    is_dict(Message0),
+    get_dict(role, Message0, Role0),
+    text_atom(Role0, Role),
+    memberchk(Role, [system,user,assistant,tool]),
+    get_dict(content, Message0, Content),
+    ( string(Content) ; atom(Content) ; is_list(Content) ),
+    put_dict(role, Message0, Role, Message).
+
+turn_options(Arguments, Tools, Options) :-
+    optional_positive_integer(Arguments, max_completion_tokens, 4096, MaxTokens),
+    Base = _{max_completion_tokens:MaxTokens},
+    (   Tools == []
+    ->  Options = Base
+    ;   put_dict(_{tools:Tools, tool_choice:"auto"}, Base, Options)
+    ).
+
+auto_tool_choice_provider(provider(Name, Config0),
+                          provider(Name, [tool_choice_modes([auto])|Config0])).
+
+turn_result(ok(Response), Projection, Result) :-
+    !,
+    put_dict(projection, Response, Projection, Result).
+turn_result(error(Error), _, _) :-
+    throw(runtime_request_error(provider_error(Error))).
+turn_result(Outcome, _, _) :-
+    throw(runtime_request_error(invalid_provider_outcome(Outcome))).
+
+context_result(ok(Projection), Projection) :- !.
+context_result(error(Error), _) :-
+    throw(runtime_request_error(context_compile_error(Error))).
+context_result(Outcome, _) :-
+    throw(runtime_request_error(invalid_context_outcome(Outcome))).
 
 runtime_options(Arguments, [budget(Budget)]) :-
     rlm:default_completion_budget(Default),
@@ -180,6 +209,11 @@ required_text(_, Key, _) :- throw(runtime_request_error(required_text(Key))).
 
 optional_text(Dict, Key, Default, Text) :-
     ( get_dict(Key, Dict, Value) -> text_string(Value, Text) ; Text = Default ).
+
+optional_positive_integer(Dict, Key, Default, Value) :-
+    ( get_dict(Key, Dict, Value0) -> Value = Value0 ; Value = Default ),
+    must_be(integer, Value),
+    ( Value > 0 -> true ; throw(runtime_request_error(positive_integer(Key))) ).
 
 request_id(Request, RequestId) :-
     ( get_dict(request_id, Request, Id0) -> text_string(Id0, RequestId)

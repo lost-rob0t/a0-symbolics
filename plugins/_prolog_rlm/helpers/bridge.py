@@ -6,15 +6,18 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from plugins._prolog_context_compiler.helpers.bridge import compiler_root
-from plugins._prolog_context_compiler.helpers.transport import (
-    PrologBridgeError,
-    PrologJsonWorker,
-)
+from plugins._prolog_rlm.helpers.transport import PrologBridgeError, PrologJsonWorker
 
 
 class PrologRuntimeBridgeError(PrologBridgeError):
     pass
+
+
+def runtime_root(config: dict[str, Any] | None = None) -> str:
+    settings = config or {}
+    return str(
+        settings.get("prolog_rlm_root") or os.getenv("PROLOG_RLM_ROOT") or ""
+    ).strip()
 
 
 class PrologRuntimeBridge(PrologJsonWorker):
@@ -28,11 +31,20 @@ class PrologRuntimeBridge(PrologJsonWorker):
             or os.getenv("OPENROUTER_TEST_MODEL")
             or ""
         ).strip()
-        environment = {"OPENROUTER_TEST_MODEL": model} if model else {}
+        api_key = str(
+            os.getenv("OPENROUTER_API_KEY")
+            or os.getenv("API_KEY_OPENROUTER")
+            or ""
+        ).strip()
+        environment = {}
+        if model:
+            environment["OPENROUTER_TEST_MODEL"] = model
+        if api_key:
+            environment["OPENROUTER_API_KEY"] = api_key
         worker = Path(__file__).resolve().parent.parent / "prolog" / "runtime_worker.pl"
         super().__init__(
             worker,
-            prolog_rlm_root=compiler_root(settings) or None,
+            prolog_rlm_root=runtime_root(settings) or None,
             timeout=float(settings.get("request_timeout_seconds", 45.0)),
             max_request_bytes=int(settings.get("max_request_bytes", 2_000_000)),
             max_response_bytes=int(settings.get("max_response_bytes", 4_000_000)),
@@ -61,7 +73,7 @@ _bridges_lock = threading.Lock()
 def shared_runtime_bridge(config: dict[str, Any] | None = None) -> PrologRuntimeBridge:
     settings = config or {}
     key = (
-        compiler_root(settings),
+        runtime_root(settings),
         str(settings.get("openrouter_model") or os.getenv("OPENROUTER_MODEL") or ""),
         float(settings.get("request_timeout_seconds", 45.0)),
     )

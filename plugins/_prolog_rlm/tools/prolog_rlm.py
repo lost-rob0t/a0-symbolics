@@ -6,7 +6,6 @@ from typing import Any
 
 from helpers import plugins
 from helpers.tool import Response, Tool
-from plugins._prolog_context_compiler.helpers.catalog import build_compile_request
 from plugins._prolog_rlm.helpers.bridge import (
     PrologRuntimeBridgeError,
     shared_runtime_bridge,
@@ -46,26 +45,11 @@ class PrologRLM(Tool):
                 "context": context or self.args.get("context") or "",
                 "budget": budget or self.args.get("budget") or {},
             }
-        elif action == "validate_tools":
-            compile_config = plugins.get_plugin_config(
-                "_prolog_context_compiler", agent=self.agent
-            ) or {}
-            request = build_compile_request(
-                self.agent, [], self.agent.loop_data, compile_config
-            )
-            arguments = {
-                "declarations": [
-                    unit
-                    for unit in request["units"]
-                    if unit.get("kind") in {"tool", "mcp_tool"}
-                ]
-            }
-            action = "tool_pack_catalog"
         else:
             return Response(
                 message=(
                     "Unknown Prolog-RLM action. Supported actions: status, catalog, "
-                    "demo, direct, complete, validate_tools."
+                    "demo, direct, complete."
                 ),
                 break_loop=False,
             )

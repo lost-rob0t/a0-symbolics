@@ -16,6 +16,24 @@ PROLOG_RLM_AVAILABLE = bool(
 )
 
 
+def test_runtime_bridge_maps_agent_zero_openrouter_credential(monkeypatch):
+    captured = {}
+
+    def capture_init(self, worker, **kwargs):
+        captured.update(kwargs.get("environment") or {})
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("API_KEY_OPENROUTER", "agent-zero-secret")
+    monkeypatch.setattr(
+        "plugins._prolog_rlm.helpers.bridge.PrologJsonWorker.__init__",
+        capture_init,
+    )
+
+    PrologRuntimeBridge({})
+
+    assert captured["OPENROUTER_API_KEY"] == "agent-zero-secret"
+
+
 @pytest.mark.skipif(
     shutil.which("swipl") is None or not PROLOG_RLM_AVAILABLE,
     reason="SWI-Prolog or PROLOG_RLM_TEST_ROOT is unavailable",
@@ -85,25 +103,22 @@ def test_runtime_worker_restarts_after_crash():
     shutil.which("swipl") is None or not PROLOG_RLM_AVAILABLE,
     reason="SWI-Prolog or PROLOG_RLM_TEST_ROOT is unavailable",
 )
-def test_runtime_bridge_loads_production_external_pack_without_executing_host():
-    declaration = {
-        "format": "agent_zero_tool",
-        "kind": "tool",
-        "category": "process",
-        "name": "exec",
-        "description": "Execute source through Agent Zero",
-        "content": "### exec",
-        "schema": {
-            "type": "object",
-            "required": ["lang", "source_code"],
-            "additionalProperties": False,
-            "properties": {
-                "lang": {"type": "string"},
-                "source_code": {"type": "string"},
-            },
-        },
-        "effect": "process",
-        "permanent": True,
+def test_runtime_bridge_compiles_context_through_the_canonical_worker():
+    request = {
+        "message": "Return the result",
+        "max_context_tokens": 2048,
+        "units": [
+            {
+                "format": "agent_zero_tool",
+                "kind": "tool",
+                "name": "response",
+                "description": "Return the final answer",
+                "content": "Return the final answer",
+                "schema": {"type": "object", "properties": {}},
+                "effect": "read",
+                "permanent": True,
+            }
+        ],
     }
     bridge = PrologRuntimeBridge(
         {
@@ -112,11 +127,10 @@ def test_runtime_bridge_loads_production_external_pack_without_executing_host():
         }
     )
     try:
-        catalog = bridge.call("tool_pack_catalog", {"declarations": [declaration]})
+        compiled = bridge.call("context_compile", {"request": request})
     finally:
         bridge.close()
 
-    assert catalog["categories"] == ["process"]
-    manifest = catalog["manifests"][0]
-    assert manifest["outcome"]["status"] == "loaded"
-    assert [schema["name"] for schema in manifest["schemas"]] == ["exec"]
+    assert compiled["active_tools"] == ["response"]
+    assert compiled["fingerprint"]
+    assert compiled["token_ledger"]

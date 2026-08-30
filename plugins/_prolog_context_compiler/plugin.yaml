@@ -1,9 +1,0 @@
-name: _prolog_context_compiler
-title: Prolog Context Compiler
-description: Compiles provider-visible prompts, skills, and tool schemas through Prolog-RLM.
-version: 0.1.0
-settings_sections:
-  - agent
-per_project_config: true
-per_agent_config: true
-always_enabled: false
