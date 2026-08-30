@@ -34,6 +34,7 @@
 - Develop new custom plugins under ignored `usr/plugins/`; tracked bundled plugins live under `plugins/`.
 - Use the framework runtime for backend and plugin-hook verification, not the separate agent execution runtime.
 - Cap all nix operations (`nix develop`, `nix build`, `nix flake check`, `nix run`) at 4 GB total memory by running them under `bash -c 'ulimit -v 4194304; ...'`; never run nix evaluation or builds unconstrained.
+- Run tests with `bash -c 'ulimit -v 4194304; A0_TEST_LITE=1 nix develop --impure -c bash -c "ulimit -v 4194304; pytest ..."'`; the impure `A0_TEST_LITE=1` devshell drops the torch-chain packages so test builds stay inside the cap. Never set `A0_TEST_LITE` for runtime builds.
 
 ## Permissions
 
