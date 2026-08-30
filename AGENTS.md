@@ -33,7 +33,7 @@
 - Copy live core-plugin changes back into tracked source under `plugins/`.
 - Develop new custom plugins under ignored `usr/plugins/`; tracked bundled plugins live under `plugins/`.
 - Use the framework runtime for backend and plugin-hook verification, not the separate agent execution runtime.
-- Cap all nix operations (`nix develop`, `nix build`, `nix flake check`, `nix run`) at 4 GB total memory by wrapping them in `systemd-run --user --scope -p MemoryMax=4G`; never run nix evaluation or builds unconstrained.
+- Cap all nix operations (`nix develop`, `nix build`, `nix flake check`, `nix run`) at 4 GB total memory by running them under `bash -c 'ulimit -v 4194304; ...'`; never run nix evaluation or builds unconstrained.
 
 ## Permissions
 

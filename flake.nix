@@ -80,6 +80,7 @@
             packages = [ python pkgs.swi-prolog prologRlm ];
             PROLOG_RLM_ENABLED = "1";
             SWIPL_PACK_PATH = "${prologRlm}/share/swi-prolog/pack";
+            PROLOG_RLM_TEST_ROOT = "${prologRlm}/share/swi-prolog/pack/prolog_rlm";
           };
         });
 
