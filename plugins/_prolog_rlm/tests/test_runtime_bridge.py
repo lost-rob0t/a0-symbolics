@@ -54,8 +54,62 @@ def test_runtime_bridge_reports_full_stable_surface():
     assert status["policy_owner"] == "prolog"
     assert status["arbitrary_call"] is False
     assert "completion" in status["surfaces"]
+    assert "direct" in status["surfaces"]
     assert "durable_effects" in status["surfaces"]
     assert "supervised_agents" in status["surfaces"]
+
+
+@pytest.mark.skipif(
+    shutil.which("swipl") is None or not PROLOG_RLM_AVAILABLE,
+    reason="SWI-Prolog or PROLOG_RLM_TEST_ROOT is unavailable",
+)
+def test_runtime_bridge_catalog_exposes_the_closed_agent_action():
+    bridge = PrologRuntimeBridge(
+        {
+            "prolog_rlm_root": str(PROLOG_RLM_ROOT),
+            "request_timeout_seconds": 3.0,
+        }
+    )
+    try:
+        catalog = bridge.call("catalog")
+    finally:
+        bridge.close()
+
+    operations = [operation["name"] for operation in catalog["operations"]]
+    assert operations == [
+        "status",
+        "catalog",
+        "demo",
+        "context_compile",
+        "turn",
+        "direct",
+        "agent",
+        "complete",
+    ]
+    by_name = {operation["name"]: operation for operation in catalog["operations"]}
+    assert by_name["agent"]["network"] is True
+    assert by_name["status"]["network"] is False
+
+
+@pytest.mark.skipif(
+    shutil.which("swipl") is None or not PROLOG_RLM_AVAILABLE,
+    reason="SWI-Prolog or PROLOG_RLM_TEST_ROOT is unavailable",
+)
+def test_runtime_bridge_agent_action_fails_closed_without_credentials(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("API_KEY_OPENROUTER", raising=False)
+    monkeypatch.setenv("OPENROUTER_TEST_MODEL", "test/model")
+    bridge = PrologRuntimeBridge(
+        {
+            "prolog_rlm_root": str(PROLOG_RLM_ROOT),
+            "request_timeout_seconds": 10.0,
+        }
+    )
+    try:
+        with pytest.raises(Exception, match="missing_credential"):
+            bridge.call("agent", {"query": "unreachable"})
+    finally:
+        bridge.close()
 
 
 @pytest.mark.skipif(

@@ -1,7 +1,7 @@
 name: _prolog_rlm
 title: Prolog-RLM Runtime
 description: Routes Agent Zero model turns through Prolog-RLM context compilation and provider execution while preserving native Agent Zero tools.
-version: 0.3.0
+version: 0.4.0
 settings_sections:
   - agent
 per_project_config: true

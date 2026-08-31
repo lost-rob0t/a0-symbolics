@@ -55,7 +55,8 @@ dispatch(status, _, Status) :-
                surfaces:[context_compiler,completion,recursive_query,
                          supervised_agents,plans,capabilities,authority,
                          durable_effects,graphs,artifacts,specs,mcp,
-                         cancellation,tracing,usage,structured_outcomes]}.
+                         cancellation,tracing,usage,structured_outcomes,
+                         direct,native_tools,spec_strategy,context_mounts]}.
 dispatch(catalog, _, Catalog) :-
     !,
     Catalog = _{operations:[
@@ -65,6 +66,7 @@ dispatch(catalog, _, Catalog) :-
         _{name:context_compile, network:false},
         _{name:turn, network:true},
         _{name:direct, network:true},
+        _{name:agent, network:true},
         _{name:complete, network:true}
     ]}.
 dispatch(demo, Arguments, Outcome) :-
@@ -104,6 +106,13 @@ dispatch(direct, Arguments, Outcome) :-
     required_text(Arguments, prompt, Prompt),
     runtime_options(Arguments, Options),
     rlm:llm_query(Prompt, Options, Outcome).
+dispatch(agent, Arguments, Outcome) :-
+    !,
+    required_text(Arguments, query, Query),
+    optional_text(Arguments, context, "", Context),
+    runtime_options(Arguments, Options),
+    rlm:rlm_direct(Query, text(Context), Options, DirectOutcome),
+    direct_result(DirectOutcome, Outcome).
 dispatch(complete, Arguments, Outcome) :-
     !,
     required_text(Arguments, query, Query),
@@ -164,6 +173,28 @@ turn_result(error(Error), _, _) :-
 turn_result(Outcome, _, _) :-
     throw(runtime_request_error(invalid_provider_outcome(Outcome))).
 
+direct_result(ok(direct_result{value:Value,
+                               usage:Usage,
+                               turns:Turns,
+                               iterations:Iterations,
+                               tool_calls:ToolCalls,
+                               context_calls:ContextCalls,
+                               observation_bytes:ObservationBytes,
+                               output_bytes:OutputBytes}),
+              Result) :- !,
+    Result = _{value:Value,
+               usage:Usage,
+               turns:Turns,
+               iterations:Iterations,
+               tool_calls:ToolCalls,
+               context_calls:ContextCalls,
+               observation_bytes:ObservationBytes,
+               output_bytes:OutputBytes}.
+direct_result(error(Error), _) :-
+    throw(runtime_request_error(direct_error(Error))).
+direct_result(Outcome, _) :-
+    throw(runtime_request_error(invalid_direct_outcome(Outcome))).
+
 context_result(ok(Projection), Projection) :- !.
 context_result(error(Error), _) :-
     throw(runtime_request_error(context_compile_error(Error))).
@@ -202,13 +233,13 @@ required_list(_, Key, _) :- throw(runtime_request_error(required_list(Key))).
 
 required_text(Dict, Key, Text) :-
     get_dict(Key, Dict, Value),
-    text_string(Value, Text),
+    worker_text_string(Value, Text),
     Text \== "",
     !.
 required_text(_, Key, _) :- throw(runtime_request_error(required_text(Key))).
 
 optional_text(Dict, Key, Default, Text) :-
-    ( get_dict(Key, Dict, Value) -> text_string(Value, Text) ; Text = Default ).
+    ( get_dict(Key, Dict, Value) -> worker_text_string(Value, Text) ; Text = Default ).
 
 optional_positive_integer(Dict, Key, Default, Value) :-
     ( get_dict(Key, Dict, Value0) -> Value = Value0 ; Value = Default ),
@@ -216,7 +247,7 @@ optional_positive_integer(Dict, Key, Default, Value) :-
     ( Value > 0 -> true ; throw(runtime_request_error(positive_integer(Key))) ).
 
 request_id(Request, RequestId) :-
-    ( get_dict(request_id, Request, Id0) -> text_string(Id0, RequestId)
+    ( get_dict(request_id, Request, Id0) -> worker_text_string(Id0, RequestId)
     ; RequestId = ""
     ).
 
@@ -233,8 +264,8 @@ write_reply(Reply) :-
 text_atom(Value, Atom) :- atom(Value), !, Atom = Value.
 text_atom(Value, Atom) :- string(Value), !, atom_string(Atom, Value).
 
-text_string(Value, Text) :- string(Value), !, Text = Value.
-text_string(Value, Text) :- atom(Value), !, atom_string(Value, Text).
+worker_text_string(Value, Text) :- string(Value), !, Text = Value.
+worker_text_string(Value, Text) :- atom(Value), !, atom_string(Value, Text).
 
 json_safe(Value, Safe) :-
     (   var(Value)

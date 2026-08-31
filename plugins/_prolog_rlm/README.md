@@ -9,9 +9,12 @@ fallback while this plugin is enabled.
 
 The agent-facing `prolog_rlm` tool exposes only a fixed operation catalog. It
 never accepts arbitrary Prolog, `call/1`, callable terms, credentials, shell
-commands, or ambient filesystem authority. `direct` and `complete` use the
-Prolog-RLM production OpenRouter provider and inherit credentials only from the
-host process environment. Results and errors never include the API key.
+commands, or ambient filesystem authority. `direct` uses the runtime's one-call
+`llm_query` contract, `agent` runs the bounded provider-native direct agent
+loop (`rlm_direct/4`) with runtime context operations and registered tools, and
+`complete` uses bounded recursive completion. All of them use the Prolog-RLM
+production OpenRouter provider and inherit credentials only from the host
+process environment. Results and errors never include the API key.
 
 Each main turn sends inert declarations for the tools Agent Zero has already
 enabled. Prolog-RLM selects the relevant context and tool schemas, calls the

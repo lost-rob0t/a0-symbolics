@@ -39,6 +39,12 @@ class PrologRLM(Tool):
                 "prompt": prompt or self.args.get("prompt") or "",
                 "budget": budget or self.args.get("budget") or {},
             }
+        elif action == "agent":
+            arguments = {
+                "query": query or self.args.get("query") or "",
+                "context": context or self.args.get("context") or "",
+                "budget": budget or self.args.get("budget") or {},
+            }
         elif action == "complete":
             arguments = {
                 "query": query or self.args.get("query") or "",
@@ -49,7 +55,7 @@ class PrologRLM(Tool):
             return Response(
                 message=(
                     "Unknown Prolog-RLM action. Supported actions: status, catalog, "
-                    "demo, direct, complete."
+                    "demo, direct, agent, complete."
                 ),
                 break_loop=False,
             )

@@ -5,5 +5,6 @@ actions:
 - `status`, `catalog`: inspect the stable runtime and bridge
 - `demo`: deterministic `context`, `tool`, `recursion`, `agent`, `graph`, or `mcp`
 - `direct`: one bounded OpenRouter-backed model call
+- `agent`: bounded provider-native agent loop with runtime context and registered tools
 - `complete`: bounded recursive completion over query and context
 never send Prolog code callable terms credentials shell commands or filesystem paths
