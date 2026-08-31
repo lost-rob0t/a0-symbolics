@@ -3,7 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
-    prolog-rlm.url = "github:lost-rob0t/prolog-rlm/b891c27c3d488ab336ebc125e9e04821351b0f22";
+    prolog-rlm.url = "github:lost-rob0t/prolog-rlm/774c9cc20f01b0203d3cf122c16fc1c1f647f138";
     prolog-rlm.inputs.nixpkgs.follows = "nixpkgs";
   };
 

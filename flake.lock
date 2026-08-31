@@ -42,17 +42,17 @@
         ]
       },
       "locked": {
-        "lastModified": 1787823753,
-        "narHash": "sha256-AgrClw0AnPRGxM7iKhjNa55uFrdf/dOwiexYDs8B01w=",
+        "lastModified": 1788212127,
+        "narHash": "sha256-iXxl9aXatfbO/1RX1j3xNQkuD6F80nObgcbRlQWv83Q=",
         "owner": "lost-rob0t",
         "repo": "prolog-rlm",
-        "rev": "b891c27c3d488ab336ebc125e9e04821351b0f22",
+        "rev": "774c9cc20f01b0203d3cf122c16fc1c1f647f138",
         "type": "github"
       },
       "original": {
         "owner": "lost-rob0t",
         "repo": "prolog-rlm",
-        "rev": "b891c27c3d488ab336ebc125e9e04821351b0f22",
+        "rev": "774c9cc20f01b0203d3cf122c16fc1c1f647f138",
         "type": "github"
       }
     },
