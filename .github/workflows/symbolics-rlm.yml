@@ -47,6 +47,35 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve exact future Prolog-RLM pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("flake.nix")
+          text = path.read_text()
+          candidate = os.environ["PROLOG_RLM_CANDIDATE"]
+          updated, count = re.subn(
+              r'prolog-rlm\.url = "github:lost-rob0t/prolog-rlm/[^\"]+";',
+              f'prolog-rlm.url = "github:lost-rob0t/prolog-rlm/{candidate}";',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("unable to rewrite exact prolog-rlm input")
+          path.write_text(updated)
+          PY
+          nix flake lock --update-input prolog-rlm
+          echo '=== CANDIDATE FLAKE.NIX ==='
+          cat flake.nix
+          echo '=== CANDIDATE FLAKE.LOCK ==='
+          cat flake.lock
+          echo '=== END CANDIDATE LOCK ==='
+
       - name: Verify exact Agent Zero + Prolog-RLM skill graph
         shell: bash
         run: |
