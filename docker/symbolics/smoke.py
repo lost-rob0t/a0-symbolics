@@ -45,22 +45,15 @@ def main() -> None:
     check_api_health(os.getenv("A0_SYMBOLICS_SMOKE_URL", "http://127.0.0.1:80"))
 
     from helpers import plugins
-    from plugins._prolog_context_compiler.helpers.bridge import PrologContextBridge
     from plugins._prolog_rlm.helpers.bridge import PrologRuntimeBridge
 
-    required_plugins = {"_prolog_context_compiler", "_prolog_rlm"}
+    required_plugins = {"_prolog_rlm"}
     enabled_plugins = set(plugins.get_enabled_plugins(None))
     missing_plugins = sorted(required_plugins - enabled_plugins)
     if missing_plugins:
         raise RuntimeError(
             "symbolic plugins are not enabled: " + ", ".join(missing_plugins)
         )
-
-    extension_paths = plugins.get_enabled_plugin_paths(
-        None, "extensions", "python", "system_prompt"
-    )
-    if not any("_prolog_context_compiler" in path for path in extension_paths):
-        raise RuntimeError("the Prolog context compiler extension is not discoverable")
 
     compile_request = {
         "message": "Return a deterministic symbolic deployment status.",
@@ -80,13 +73,11 @@ def main() -> None:
         ],
     }
 
-    compiler = PrologContextBridge(timeout=10.0)
     runtime = PrologRuntimeBridge({"request_timeout_seconds": 10.0})
     try:
-        compiled = compiler.compile(compile_request)
+        compiled = runtime.call("context_compile", {"request": compile_request})
         status = runtime.call("status")
     finally:
-        compiler.close()
         runtime.close()
 
     if compiled["active_tools"] != ["response"]:
@@ -101,7 +92,8 @@ def main() -> None:
                 "fingerprint": compiled["fingerprint"],
                 "integration_path": [
                     "agent-zero-plugin-registry",
-                    "prolog-context-compiler",
+                    "prolog-rlm-context-compile",
+                    "prolog-rlm-model-turn",
                     "prolog-rlm",
                 ],
                 "policy_owner": status["policy_owner"],

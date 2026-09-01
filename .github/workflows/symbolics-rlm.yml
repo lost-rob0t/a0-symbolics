@@ -1,0 +1,96 @@
+name: Symbolics RLM
+
+on:
+  pull_request:
+    paths:
+      - "flake.nix"
+      - "flake.lock"
+      - "plugins/_prolog_rlm/**"
+      - ".github/workflows/symbolics-rlm.yml"
+  push:
+    paths:
+      - "flake.nix"
+      - "flake.lock"
+      - "plugins/_prolog_rlm/**"
+      - ".github/workflows/symbolics-rlm.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: symbolics-rlm-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  PROLOG_RLM_CANDIDATE: b12561cf888f62c5bfe692cc6669eae50eb1b634
+
+jobs:
+  skill-graph-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout a0-symbolics exact candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Checkout Prolog-RLM skill-graph candidate
+        uses: actions/checkout@v5
+        with:
+          repository: lost-rob0t/prolog-rlm
+          ref: ${{ env.PROLOG_RLM_CANDIDATE }}
+          path: .ci/prolog-rlm
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31.11.1
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve exact future Prolog-RLM pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("flake.nix")
+          text = path.read_text()
+          candidate = os.environ["PROLOG_RLM_CANDIDATE"]
+          updated, count = re.subn(
+              r'prolog-rlm\.url = "github:lost-rob0t/prolog-rlm/[^\"]+";',
+              f'prolog-rlm.url = "github:lost-rob0t/prolog-rlm/{candidate}";',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("unable to rewrite exact prolog-rlm input")
+          path.write_text(updated)
+          PY
+          nix flake lock --update-input prolog-rlm
+          echo '=== CANDIDATE FLAKE.NIX ==='
+          cat flake.nix
+          echo '=== CANDIDATE FLAKE.LOCK ==='
+          cat flake.lock
+          echo '=== END CANDIDATE LOCK ==='
+
+      - name: Verify exact Agent Zero + Prolog-RLM skill graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PROLOG_RLM_ROOT="$GITHUB_WORKSPACE/.ci/prolog-rlm"
+          export PROLOG_RLM_TEST_ROOT="$PROLOG_RLM_ROOT"
+          bash -c 'ulimit -v 4194304; A0_TEST_LITE=1 nix develop --impure -c bash -c '\''
+            set -euo pipefail
+            ulimit -v 4194304
+            python -m pytest -q plugins/_prolog_rlm/tests tests/test_default_prompt_budget.py
+            swipl -q -f "$PROLOG_RLM_ROOT/test/run_tests.pl"
+          '\'''
+
+      - name: Verify packaged flake still evaluates
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -c 'ulimit -v 4194304; nix flake check --no-build'

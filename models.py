@@ -41,7 +41,6 @@ from langchain_core.messages import (
     SystemMessage,
 )
 from langchain.embeddings.base import Embeddings
-from sentence_transformers import SentenceTransformer
 from pydantic import ConfigDict
 
 
@@ -855,6 +854,9 @@ class LocalSentenceTransformerWrapper(Embeddings):
             "model_kwargs",
         }
         st_kwargs = {k: v for k, v in (kwargs or {}).items() if k in st_allowed_keys}
+
+        # Imported lazily so importing `models` does not pull the torch stack
+        from sentence_transformers import SentenceTransformer
 
         self.model = SentenceTransformer(model, **st_kwargs)
         self.model_name = model

@@ -27,7 +27,7 @@ class PrologJsonWorker:
         worker: str | Path,
         *,
         prolog_rlm_root: str | Path | None = None,
-        timeout: float = 2.0,
+        timeout: float = 45.0,
         max_request_bytes: int = 2_000_000,
         max_response_bytes: int = 4_000_000,
         environment: dict[str, str] | None = None,

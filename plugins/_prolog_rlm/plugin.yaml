@@ -1,7 +1,7 @@
 name: _prolog_rlm
 title: Prolog-RLM Runtime
-description: Runs the stable Prolog-RLM context, completion, supervision, authority, effect, graph, artifact, spec, MCP, and trace semantics through a typed bridge.
-version: 0.2.0
+description: Routes Agent Zero model turns through Prolog-RLM context compilation and provider execution while preserving native Agent Zero tools.
+version: 0.4.0
 settings_sections:
   - agent
 per_project_config: true

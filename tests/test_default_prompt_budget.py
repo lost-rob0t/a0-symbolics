@@ -9,7 +9,14 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agent import AgentConfig, AgentContext, AgentContextType
-from helpers import runtime, tokens
+from helpers import runtime, settings, tokens
+
+
+def _isolate_settings():
+    """Override settings in memory only; no usr state is read or written."""
+    old_cache = settings._settings
+    settings._settings = {**settings.get_settings(), "workdir_show": False}
+    return old_cache
 
 
 def _iter_prompt_files():
@@ -28,6 +35,7 @@ async def _build_system_text(profile: str = "agent0", rendered: bool = False) ->
     }
     os.environ.pop("PROLOG_RLM_ENABLED", None)
     os.environ.pop("PROLOG_RLM_ROOT", None)
+    old_settings_cache = _isolate_settings()
     runtime.args.clear()
     runtime.args["dockerized"] = "true"
 
@@ -50,6 +58,7 @@ async def _build_system_text(profile: str = "agent0", rendered: bool = False) ->
         AgentContext.remove(ctx.id)
         runtime.args.clear()
         runtime.args.update(old_args)
+        settings._settings = old_settings_cache
         for name, value in old_prolog_env.items():
             if value is None:
                 os.environ.pop(name, None)

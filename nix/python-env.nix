@@ -107,5 +107,11 @@ let
     tiktoken unstructured unstructured-client uvicorn watchdog webcolors
     wsproto patchright pytest pytest-asyncio pytest-mock
   ];
+  # Torch-chain packages that dominate build memory; excluded from the
+  # impure test environment selected with A0_TEST_LITE=1 (tests import
+  # `models` lazily for local embeddings, so they never need them).
+  heavyPackages = with ps; [ openai-whisper sentence-transformers ];
+  litePackages = builtins.filter (p: !builtins.elem p heavyPackages) packages;
+  testLite = builtins.getEnv "A0_TEST_LITE" == "1";
 in
-pkgs.python312.withPackages (_: packages)
+pkgs.python312.withPackages (_: if testLite then litePackages else packages)

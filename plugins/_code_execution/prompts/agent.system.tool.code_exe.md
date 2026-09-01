@@ -5,6 +5,7 @@ args:
 - `code`: command or script code
 - `session`: terminal session id; default `0`
 - `reset`: kill a session before running; `true` or `false`
+Input schema for tool_args: {"type":"object","required":["runtime"],"additionalProperties":false,"properties":{"runtime":{"type":"string","enum":["terminal","python","nodejs","output"]},"code":{"type":"string"},"session":{"type":"integer","minimum":0},"reset":{"type":"boolean"},"allow_running":{"type":"boolean"}}}
 rules:
 - place the command or script in `code`
 - use `runtime=output` to poll running work

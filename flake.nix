@@ -1,9 +1,9 @@
 {
-  description = "Agent Zero with Prolog-RLM symbolic context integration";
+  description = "Agent Zero with Prolog-RLM model routing";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
-    prolog-rlm.url = "github:lost-rob0t/prolog-rlm/2e1264d80d02fecfb9f946e1328caaf1053e7a3b";
+    prolog-rlm.url = "github:lost-rob0t/prolog-rlm/774c9cc20f01b0203d3cf122c16fc1c1f647f138";
     prolog-rlm.inputs.nixpkgs.follows = "nixpkgs";
   };
 
@@ -80,6 +80,7 @@
             packages = [ python pkgs.swi-prolog prologRlm ];
             PROLOG_RLM_ENABLED = "1";
             SWIPL_PACK_PATH = "${prologRlm}/share/swi-prolog/pack";
+            PROLOG_RLM_TEST_ROOT = "${prologRlm}/share/swi-prolog/pack/prolog_rlm";
           };
         });
 
@@ -109,55 +110,28 @@
             mkdir -p "$HOME" "$TMPDIR/usr" "$TMPDIR/tmp"
             cd "${source}/share/a0-symbolics"
             ${python}/bin/python - <<'PY'
-            from plugins._prolog_context_compiler.helpers.bridge import PrologContextBridge
             from plugins._prolog_rlm.helpers.bridge import PrologRuntimeBridge
-
-            context = PrologContextBridge(timeout=10.0)
-            try:
-                compiled = context.compile({
-                    "message": "return the result",
-                    "max_context_tokens": 2048,
-                    "units": [{
-                        "format": "agent_zero_tool",
-                        "kind": "tool",
-                        "category": "agent",
-                        "name": "response",
-                        "description": "Return the final answer",
-                        "content": "### response",
-                        "schema": {"type": "object", "properties": {}},
-                        "effect": "read",
-                        "permanent": True,
-                    }],
-                })
-                assert compiled["active_tools"] == ["response"]
-            finally:
-                context.close()
 
             runtime = PrologRuntimeBridge({"request_timeout_seconds": 10.0})
             try:
-                status = runtime.call("status")
-                assert status["ready"] is True
-                catalog = runtime.call("tool_pack_catalog", {"declarations": [{
+                compiled = runtime.call("context_compile", {"request": {
+                  "message": "return the result",
+                  "max_context_tokens": 2048,
+                  "units": [{
                     "format": "agent_zero_tool",
                     "kind": "tool",
-                    "category": "process",
-                    "name": "exec",
-                    "description": "Execute source through Agent Zero",
-                    "content": "### exec",
-                    "schema": {
-                        "type": "object",
-                        "required": ["lang", "source_code"],
-                        "additionalProperties": False,
-                        "properties": {
-                            "lang": {"type": "string"},
-                            "source_code": {"type": "string"},
-                        },
-                    },
-                    "effect": "process",
+                    "category": "agent",
+                    "name": "response",
+                    "description": "Return the final answer",
+                    "content": "### response",
+                    "schema": {"type": "object", "properties": {}},
+                    "effect": "read",
                     "permanent": True,
-                }]})
-                assert catalog["categories"] == ["process"]
-                assert catalog["manifests"][0]["outcome"]["status"] == "loaded"
+                  }],
+                }})
+                assert compiled["active_tools"] == ["response"]
+                status = runtime.call("status")
+                assert status["ready"] is True
             finally:
                 runtime.close()
             PY
