@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PROLOG_RLM_CANDIDATE: fc4def9991a85658e5a1a14e9a36304c819b66a4
+  PROLOG_RLM_CANDIDATE: b12561cf888f62c5bfe692cc6669eae50eb1b634
 
 jobs:
   skill-graph-integration:
