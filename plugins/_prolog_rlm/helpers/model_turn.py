@@ -6,7 +6,7 @@ from typing import Any, Awaitable, Callable
 
 from langchain_core.messages import BaseMessage, SystemMessage
 
-from helpers import plugins, tokens
+from helpers import plugins, skills, tokens
 from helpers.llm_result import LLMResult, ResponseItem
 from helpers.responses_tools import build_responses_function_tools
 from plugins._model_config.helpers.model_config import get_chat_model_config
@@ -90,6 +90,9 @@ def build_turn_request(
                 content=content,
                 permanent=False,
             )
+
+    _append_skill_units(units, agent)
+
     for tool in native_tools:
         if not _valid_native_tool(tool):
             continue
@@ -124,6 +127,61 @@ def build_turn_request(
             "units": units,
         },
     }
+
+
+def _append_skill_units(units: list[dict[str, Any]], agent: Any) -> None:
+    """Project Agent Zero's scoped skill catalog into Prolog-RLM.
+
+    Skills remain inert context.  Their relationship metadata is carried across
+    the adapter boundary so Prolog-RLM's skill/prompt graph can reason about
+    dependencies without Python selecting or granting anything.
+    """
+    for skill in skills.list_skills(agent=agent, include_content=True):
+        name = str(skill.name or skill.path.name).strip()
+        if not name:
+            continue
+        frontmatter = dict(skill.raw_frontmatter or {})
+        metadata = dict(skill.metadata or {})
+        aliases = _string_list(
+            frontmatter.get("aliases")
+            or metadata.get("aliases")
+            or skill.triggers
+        )
+        unit = {
+            "kind": "skill",
+            "format": "agent_zero_skill",
+            "name": name,
+            "description": str(skill.description or name),
+            "content": str(skill.content or skill.description or name),
+            "compact": str(skill.description or name),
+            "aliases": aliases,
+            "permanent": False,
+            "source": str(skill.path),
+            "tags": list(skill.tags),
+            "allowed_tools": list(skill.allowed_tools),
+            "requires": _relation_names(frontmatter, metadata, "requires"),
+            "suggests": _relation_names(frontmatter, metadata, "suggests"),
+            "conflicts": _relation_names(frontmatter, metadata, "conflicts"),
+            "supersedes": _relation_names(frontmatter, metadata, "supersedes"),
+        }
+        units.append(unit)
+
+
+def _relation_names(
+    frontmatter: dict[str, Any], metadata: dict[str, Any], key: str
+) -> list[str]:
+    return _string_list(frontmatter.get(key) or metadata.get(key))
+
+
+def _string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value).strip()
+    return [text] if text else []
 
 
 async def route_model_turn(
@@ -188,7 +246,7 @@ def _llm_result(turn: dict[str, Any], request: dict[str, Any]) -> LLMResult:
         state="off",
         usage=dict(turn.get("usage") or {}),
         raw=dict(turn),
-        capability={"prolog_rlm": True, "context_compiled": True},
+        capability={"prolog_rlm": True, "context_compiled": True, "skills": True},
     )
     if not result.response and result.function_calls:
         result.response = result.function_calls_text()
