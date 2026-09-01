@@ -1,0 +1,5 @@
+zara_binary: zara
+endpoint: ""
+timeout_seconds: 35
+max_message_chars: 20000
+max_output_chars: 50000
