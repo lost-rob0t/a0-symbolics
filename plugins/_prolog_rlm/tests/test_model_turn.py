@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -44,6 +45,15 @@ class ModelTurnTests(unittest.IsolatedAsyncioTestCase):
             },
             {
                 "type": "function",
+                "name": "skills_tool",
+                "description": "Discover and load Agent Zero skills.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"skill_name": {"type": "string"}},
+                },
+            },
+            {
+                "type": "function",
                 "name": "response",
                 "description": "Return the final response.",
                 "parameters": {
@@ -71,6 +81,14 @@ class ModelTurnTests(unittest.IsolatedAsyncioTestCase):
                     "ctx_length": 200_000,
                 },
             ),
+            patch(
+                "plugins._prolog_rlm.helpers.model_turn.skills.list_skills",
+                return_value=[],
+            ),
+            patch(
+                "plugins._prolog_rlm.helpers.model_turn.skills.get_loaded_skill_names",
+                return_value=[],
+            ),
         ):
             request = build_turn_request(
                 agent,
@@ -85,10 +103,14 @@ class ModelTurnTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request["context_window"], 200_000)
         self.assertEqual(request["compile_request"]["message"], "run pwd")
         self.assertEqual(request["compile_request"]["max_context_tokens"], 32_768)
+        self.assertEqual(request["compile_request"]["skill_packages"], [])
+        self.assertEqual(request["compile_request"]["selected_skills"], [])
+        self.assertIs(request["compile_request"]["include_core_skills"], True)
         self.assertEqual(
             agent.get_data("responses_tool_name_map"),
             {
                 "code_execution_tool": "code_execution_tool",
+                "skills_tool": "skills_tool",
                 "response": "response",
             },
         )
@@ -98,6 +120,7 @@ class ModelTurnTests(unittest.IsolatedAsyncioTestCase):
             if unit["kind"] == "tool"
         }
         self.assertIs(tool_units["response"]["permanent"], True)
+        self.assertIs(tool_units["skills_tool"]["permanent"], True)
         self.assertEqual(
             tool_units["code_execution_tool"]["schema"]["required"],
             ["runtime"],
@@ -106,6 +129,93 @@ class ModelTurnTests(unittest.IsolatedAsyncioTestCase):
             request["tools"][0]["function"]["parameters"]["additionalProperties"],
             False,
         )
+
+    def test_visible_skill_packages_and_loaded_skill_ledger_are_forwarded(self):
+        agent = FakeAgent()
+        visible = [
+            SimpleNamespace(name="review-pr", path=Path("/skills/review-pr")),
+            SimpleNamespace(name="pdf", path=Path("/skills/pdf")),
+        ]
+        with (
+            patch(
+                "plugins._prolog_rlm.helpers.model_turn.build_responses_function_tools",
+                return_value=([], {}),
+            ),
+            patch(
+                "plugins._prolog_rlm.helpers.model_turn.get_chat_model_config",
+                return_value={
+                    "provider": "openrouter",
+                    "name": "openai/gpt-test",
+                    "ctx_length": 200_000,
+                },
+            ),
+            patch(
+                "plugins._prolog_rlm.helpers.model_turn.skills.list_skills",
+                return_value=visible,
+            ) as list_skills,
+            patch(
+                "plugins._prolog_rlm.helpers.model_turn.skills.get_loaded_skill_names",
+                return_value=["hidden-skill", "pdf"],
+            ),
+        ):
+            request = build_turn_request(
+                agent,
+                [SystemMessage(content="System"), HumanMessage(content="review this")],
+            )
+
+        list_skills.assert_called_once_with(
+            agent=agent,
+            include_content=False,
+            include_hidden=False,
+        )
+        compile_request = request["compile_request"]
+        self.assertEqual(
+            compile_request["skill_packages"],
+            [
+                {"name": "review-pr", "path": "/skills/review-pr"},
+                {"name": "pdf", "path": "/skills/pdf"},
+            ],
+        )
+        # A stale/hidden ledger name cannot bypass Agent Zero's visible catalog.
+        self.assertEqual(compile_request["selected_skills"], ["pdf"])
+        self.assertIs(compile_request["include_core_skills"], True)
+        self.assertFalse(
+            any(
+                unit.get("kind") == "skill"
+                for unit in compile_request["units"]
+            )
+        )
+
+    def test_core_skill_projection_can_be_explicitly_disabled(self):
+        agent = FakeAgent()
+        with (
+            patch(
+                "plugins._prolog_rlm.helpers.model_turn.build_responses_function_tools",
+                return_value=([], {}),
+            ),
+            patch(
+                "plugins._prolog_rlm.helpers.model_turn.get_chat_model_config",
+                return_value={
+                    "provider": "openrouter",
+                    "name": "openai/gpt-test",
+                    "ctx_length": 200_000,
+                },
+            ),
+            patch(
+                "plugins._prolog_rlm.helpers.model_turn.skills.list_skills",
+                return_value=[],
+            ),
+            patch(
+                "plugins._prolog_rlm.helpers.model_turn.skills.get_loaded_skill_names",
+                return_value=[],
+            ),
+        ):
+            request = build_turn_request(
+                agent,
+                [HumanMessage(content="hello")],
+                {"include_core_skills": False},
+            )
+        self.assertIs(request["compile_request"]["include_core_skills"], False)
 
     async def test_prolog_turn_returns_native_tool_call_and_authoritative_usage(self):
         agent = FakeAgent()
@@ -240,8 +350,6 @@ class ModelTurnTests(unittest.IsolatedAsyncioTestCase):
         )
 
     def test_standalone_context_compiler_plugin_is_removed(self):
-        from pathlib import Path
-
         plugin_root = Path(__file__).resolve().parents[2]
         self.assertFalse((plugin_root / "_prolog_context_compiler").exists())
 
@@ -259,6 +367,14 @@ class ModelTurnTests(unittest.IsolatedAsyncioTestCase):
                     "name": "openai/gpt-test",
                     "ctx_length": 200_000,
                 },
+            ),
+            patch(
+                "plugins._prolog_rlm.helpers.model_turn.skills.list_skills",
+                return_value=[],
+            ),
+            patch(
+                "plugins._prolog_rlm.helpers.model_turn.skills.get_loaded_skill_names",
+                return_value=[],
             ),
         ):
             request = build_turn_request(
