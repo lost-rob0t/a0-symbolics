@@ -22,25 +22,30 @@ class FakeAgent:
         self.data[name] = value
 
 
-def test_agent_zero_skills_are_projected_as_typed_prolog_rlm_skill_units():
-    agent = FakeAgent()
-    skill = Skill(
-        name="repo-review",
-        description="Review a repository before changing it",
-        path=Path("/a0/usr/skills/repo-review"),
-        skill_md_path=Path("/a0/usr/skills/repo-review/SKILL.md"),
-        tags=["git", "review"],
-        triggers=["review repository"],
-        allowed_tools=["code_execution_tool"],
-        metadata={"suggests": ["test-changes"]},
-        raw_frontmatter={"requires": ["inspect-repo"]},
-        content="Read the repository rules, inspect current state, then review changes.",
+def _skill(name: str, path: str) -> Skill:
+    return Skill(
+        name=name,
+        description=f"{name} skill",
+        path=Path(path),
+        skill_md_path=Path(path) / "SKILL.md",
     )
+
+
+def test_agent_zero_skills_are_projected_as_exact_admitted_packages():
+    agent = FakeAgent()
+    visible = [
+        _skill("repo-review", "/a0/usr/skills/repo-review"),
+        _skill("test-changes", "/a0/plugins/review/skills/test-changes"),
+    ]
 
     with (
         patch(
             "plugins._prolog_rlm.helpers.model_turn.skills.list_skills",
-            return_value=[skill],
+            return_value=visible,
+        ),
+        patch(
+            "plugins._prolog_rlm.helpers.model_turn.skills.get_loaded_skill_names",
+            return_value=["repo-review", "hidden-skill"],
         ),
         patch(
             "plugins._prolog_rlm.helpers.model_turn.build_responses_function_tools",
@@ -58,28 +63,38 @@ def test_agent_zero_skills_are_projected_as_typed_prolog_rlm_skill_units():
         request = build_turn_request(
             agent,
             [SystemMessage(content="System contract"), HumanMessage(content="review it")],
+            {"include_core_skills": True},
         )
 
-    units = request["compile_request"]["units"]
-    projected = next(unit for unit in units if unit.get("name") == "repo-review")
-    assert projected["format"] == "agent_zero_skill"
-    assert projected["kind"] == "skill"
-    assert projected["content"].startswith("Read the repository rules")
-    assert projected["aliases"] == ["review repository"]
-    assert projected["requires"] == ["inspect-repo"]
-    assert projected["suggests"] == ["test-changes"]
-    assert projected["tags"] == ["git", "review"]
-    assert projected["allowed_tools"] == ["code_execution_tool"]
-    assert projected["permanent"] is False
+    compile_request = request["compile_request"]
+    assert compile_request["skill_packages"] == [
+        {"name": "repo-review", "path": "/a0/usr/skills/repo-review"},
+        {
+            "name": "test-changes",
+            "path": "/a0/plugins/review/skills/test-changes",
+        },
+    ]
+    # Loaded skills are only pinned if they survived Agent Zero's current
+    # visibility/precedence policy. Hidden/stale names never cross the ABI.
+    assert compile_request["selected_skills"] == ["repo-review"]
+    assert compile_request["include_core_skills"] is True
+    assert not any(
+        unit.get("format") == "agent_zero_skill"
+        for unit in compile_request["units"]
+    )
 
 
-def test_skill_catalog_is_scoped_through_agent_zero_discovery():
+def test_skill_catalog_uses_agent_zero_scope_and_does_not_read_bodies_in_python():
     agent = FakeAgent()
     with (
         patch(
             "plugins._prolog_rlm.helpers.model_turn.skills.list_skills",
             return_value=[],
         ) as list_skills,
+        patch(
+            "plugins._prolog_rlm.helpers.model_turn.skills.get_loaded_skill_names",
+            return_value=[],
+        ),
         patch(
             "plugins._prolog_rlm.helpers.model_turn.build_responses_function_tools",
             return_value=([], {}),
@@ -98,4 +113,8 @@ def test_skill_catalog_is_scoped_through_agent_zero_discovery():
             [SystemMessage(content="System contract"), HumanMessage(content="hello")],
         )
 
-    list_skills.assert_called_once_with(agent=agent, include_content=True)
+    list_skills.assert_called_once_with(
+        agent=agent,
+        include_content=False,
+        include_hidden=False,
+    )
