@@ -20,7 +20,10 @@ PLUGIN_NAME = "_prolog_rlm"
 CTX_WINDOW_KEY = "ctx_window"
 TOOL_NAME_MAP_KEY = "responses_tool_name_map"
 MAX_CONTEXT_UNIT_CHARS = 30_000
-PERMANENT_TOOLS = {"response"}
+# Keep the final-response surface and Agent Zero's skill discovery/loading surface
+# permanently available. Prolog still decides which non-permanent tools and
+# ordinary skill packages are relevant for each turn.
+PERMANENT_TOOLS = {"response", "skills_tool"}
 TOOL_EFFECTS = {
     "response": "read",
     "input": "read",
@@ -91,7 +94,7 @@ def build_turn_request(
                 permanent=False,
             )
 
-    _append_skill_units(units, agent)
+    skill_packages, selected_skills = _skill_projection(agent)
 
     for tool in native_tools:
         if not _valid_native_tool(tool):
@@ -125,63 +128,47 @@ def build_turn_request(
                 1024, int(settings.get("max_context_tokens", 32_768))
             ),
             "units": units,
+            # Agent Zero owns visibility/precedence and passes only the exact
+            # admitted package directories. Prolog-RLM owns SKILL.md parsing,
+            # canonical metadata, selection, and graph validation.
+            "skill_packages": skill_packages,
+            "selected_skills": selected_skills,
+            "include_core_skills": bool(settings.get("include_core_skills", True)),
         },
     }
 
 
-def _append_skill_units(units: list[dict[str, Any]], agent: Any) -> None:
-    """Project Agent Zero's scoped skill catalog into Prolog-RLM.
+def _skill_projection(agent: Any) -> tuple[list[dict[str, str]], list[str]]:
+    """Return Agent Zero-visible packages plus current-chat pinned skill names.
 
-    Skills remain inert context.  Their relationship metadata is carried across
-    the adapter boundary so Prolog-RLM's skill/prompt graph can reason about
-    dependencies without Python selecting or granting anything.
+    `helpers.skills.list_skills` already applies Agent Zero's root precedence,
+    project/profile scope and hidden-skill policy. We deliberately pass exact
+    package directories rather than broad roots so the Prolog loader cannot
+    rediscover hidden or shadowed siblings. The loaded-skill ledger is only a
+    host selection hint; Prolog-RLM still validates every selected name against
+    the normalized catalog and never gains tool authority from skill metadata.
     """
-    for skill in skills.list_skills(agent=agent, include_content=True):
+    visible = skills.list_skills(
+        agent=agent,
+        include_content=False,
+        include_hidden=False,
+    )
+    packages: list[dict[str, str]] = []
+    visible_names: set[str] = set()
+    for skill in visible:
         name = str(skill.name or skill.path.name).strip()
-        if not name:
+        path = str(skill.path).strip()
+        if not name or not path or name in visible_names:
             continue
-        frontmatter = dict(skill.raw_frontmatter or {})
-        metadata = dict(skill.metadata or {})
-        aliases = _string_list(
-            frontmatter.get("aliases")
-            or metadata.get("aliases")
-            or skill.triggers
-        )
-        unit = {
-            "kind": "skill",
-            "format": "agent_zero_skill",
-            "name": name,
-            "description": str(skill.description or name),
-            "content": str(skill.content or skill.description or name),
-            "compact": str(skill.description or name),
-            "aliases": aliases,
-            "permanent": False,
-            "source": str(skill.path),
-            "tags": list(skill.tags),
-            "allowed_tools": list(skill.allowed_tools),
-            "requires": _relation_names(frontmatter, metadata, "requires"),
-            "suggests": _relation_names(frontmatter, metadata, "suggests"),
-            "conflicts": _relation_names(frontmatter, metadata, "conflicts"),
-            "supersedes": _relation_names(frontmatter, metadata, "supersedes"),
-        }
-        units.append(unit)
+        visible_names.add(name)
+        packages.append({"name": name, "path": path})
 
-
-def _relation_names(
-    frontmatter: dict[str, Any], metadata: dict[str, Any], key: str
-) -> list[str]:
-    return _string_list(frontmatter.get(key) or metadata.get(key))
-
-
-def _string_list(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [value] if value.strip() else []
-    if isinstance(value, (list, tuple, set)):
-        return [str(item).strip() for item in value if str(item).strip()]
-    text = str(value).strip()
-    return [text] if text else []
+    selected = [
+        name
+        for name in skills.get_loaded_skill_names(agent)
+        if name in visible_names
+    ]
+    return packages, selected
 
 
 async def route_model_turn(
