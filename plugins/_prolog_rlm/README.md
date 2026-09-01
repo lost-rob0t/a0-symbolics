@@ -23,6 +23,29 @@ native function calls. Agent Zero then executes those calls through its normal
 tool lifecycle and scoped policy gate. Visibility, capability, and execution
 authority remain separate.
 
+## Skills and the Prolog-RLM skill graph
+
+Agent Zero remains the authority for which external skills are visible after
+project/profile/plugin precedence and hidden-skill policy. The bridge forwards
+only the exact admitted `{name,path}` skill package directories plus the names
+already loaded in the current chat. It does not parse or reproduce
+`metadata.prolog-rlm` in Python and it never passes broad ambient skill roots.
+
+Prolog-RLM loads those exact packages through `rlm_skill`, merges its pinned core
+skill catalog when `include_core_skills` is enabled, and validates/projects the
+same normalized catalog through `rlm_skill_graph`. Dependencies, suggestions,
+conflicts, supersession, canonical triggers, bounded bodies/resources, and
+fingerprints therefore come from one Prolog-owned skill representation rather
+than an Agent Zero shadow graph. Loaded/current-chat skills are pinned through
+ordinary compiler semantics; ordinary visible skills remain relevance-selected.
+Skill metadata never grants a tool capability or execution authority.
+
+`skills_tool` and `response` remain permanently provider-visible. This lets the
+model discover/load an Agent Zero skill or finish the turn even when other tools
+are excluded by symbolic relevance selection. Once a skill is loaded, its name
+is carried in the next turn's `selected_skills` ledger only if it is still
+visible under Agent Zero's current policy.
+
 The integration uses Agent Zero's existing tools directly, including
 `code_execution_tool` and `text_editor`; it does not maintain duplicate exec,
 Git, or patch adapters. A crash, malformed reply, oversized reply, timeout, or
