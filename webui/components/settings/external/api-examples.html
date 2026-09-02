@@ -607,9 +607,9 @@ async function getFiles(filePaths) {
             for (const [filename, base64Content] of Object.entries(data)) {
                 try {
                     const textContent = atob(base64Content);
-                    console.log(`\${filename}: \${textContent.substring(0, 100)}...`);
+                    console.log(filename + ': ' + textContent.substring(0, 100) + '...');
                 } catch (e) {
-                    console.log(`\${filename}: Binary file (\${base64Content.length} chars)`);
+                    console.log(filename + ': Binary file (' + base64Content.length + ' chars)');
                 }
             }
 
