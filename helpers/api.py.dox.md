@@ -33,6 +33,9 @@
 
 - Helper modules own reusable framework APIs and must preserve public callers unless all callers, tests, and docs are updated together.
 - Update this file whenever public functions, classes, persistence behavior, path/security assumptions, side effects, or cross-module contracts change.
+- `register_api_route(...)` installs one dispatcher at `/api/<path:path>` for `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`; the selected handler class still restricts the methods actually allowed for its endpoint.
+- Built-in `api/<path>.py` handlers are therefore addressed as `/api/<path>`. For example, `api/api_message.py` is `/api/api_message`, not `/api_message`.
+- Plugin API handlers use `/api/plugins/<plugin_name>/<handler>` and resolve from `plugins/<plugin_name>/api/<handler>.py`.
 - `ApiHandler` defines `process(...)`.
 - `ApiHandler` defines `get_methods(...)`.
 - `ApiHandler` defines `requires_auth(...)`.
@@ -54,6 +57,7 @@
 - Preserve public helper APIs used by core code and plugins unless every caller is updated.
 - Keep path, auth, secret, persistence, network, and subprocess behavior explicit and bounded.
 - Prefer adding cohesive helper functions here only when behavior is reused across modules.
+- When documenting an API endpoint, derive its public URL from the dispatcher plus handler path instead of dropping the `/api/` dispatcher prefix.
 
 ## Verification
 

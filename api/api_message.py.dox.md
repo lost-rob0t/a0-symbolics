@@ -2,7 +2,7 @@
 
 ## Purpose
 
-- Own the `api_message.py` API endpoint.
+- Own the external chat endpoint at `POST /api/api_message`.
 - This module accepts external API messages and dispatches them into Agent Zero chat processing.
 - Keep this file-level DOX profile synchronized with `api_message.py` because this directory is intentionally flat.
 
@@ -19,6 +19,13 @@
 
 ## Runtime Contracts
 
+- The public route is `POST /api/api_message`; `helpers.api.register_api_route(...)` supplies the leading `/api/` dispatcher prefix for the `api_message` handler path.
+- The endpoint disables Web UI authentication and CSRF, and requires `X-API-KEY` authentication.
+- Accepted request fields are `context_id`, `message`, `attachments`, `lifetime_hours`, `project_name`, and `agent_profile`.
+- `message` is required. `lifetime_hours` defaults to `24` and must be a positive number.
+- `attachments` are `{filename, base64}` objects and are written under `/a0/usr/uploads` after filename sanitization.
+- `project_name` and `agent_profile` are first-message context choices. An existing context rejects a different agent profile, and a project cannot be replaced once one is active.
+- Successful responses contain `context_id` and `response`.
 - HTTP handlers must derive from `helpers.api.ApiHandler`; WebSocket handlers must derive from `helpers.ws.WsHandler`.
 - Update this file whenever request payloads, authentication or CSRF requirements, response shapes, route side effects, or WebSocket event contracts change.
 - `ApiMessage` is an `ApiHandler`.
@@ -38,6 +45,7 @@
 
 - Preserve authentication, CSRF, loopback, and API-key checks unless the endpoint contract explicitly changes.
 - Update frontend callers, plugin callers, and tests together when payload shape changes.
+- Keep the visible External API examples synchronized with this route and payload contract.
 - Use `helpers.api.Response` for non-JSON responses, files, redirects, or status-specific replies.
 
 ## Verification

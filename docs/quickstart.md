@@ -3,6 +3,12 @@
 This guide gets you from install to a first useful chat. Keep it simple: start
 Agent Zero, add a model or API key, open the Web UI, and give it a concrete job.
 
+> [!NOTE]
+> If you cloned this `a0-symbolics` repository and want the bundled Symbolics
+> runtime, use the repository-native flow in [A0 Symbolics Runtime](symbolics-runtime.md).
+> The installer and Launcher instructions below describe the general upstream
+> Agent Zero install paths.
+
 ## Installation (recommended)
 
 Choose the path that matches your machine:
@@ -99,7 +105,7 @@ Help me create a project for this repository and write good instructions for it.
 ```
 
 > [!TIP]
-> The Web UI provides a comprehensive chat actions dropdown with options for managing conversations, including creating new chats, resetting, saving/loading, and many more advanced features. Chats are saved in JSON format in the `/usr/chats` directory.
+> The Web UI provides a comprehensive chat actions dropdown with options for managing conversations, including creating new chats, resetting, saving/loading, and many more advanced features. Chats are saved in JSON format under `/a0/usr/chats/` inside the container.
 >
 > ![Chat Actions Dropdown](res/quickstart/ui_chat_management.png)
 
