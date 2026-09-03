@@ -270,8 +270,8 @@ private const val MOBILE_JS = """
  if(!v){v=document.createElement('meta');v.name='viewport';document.head?.appendChild(v)}
  v.content='width=device-width,initial-scale=1,viewport-fit=cover';
  const syncViewport=()=>{
-   root.style.setProperty('--a0-android-vh',`${window.visualViewport?.height||window.innerHeight}px`);
-   root.style.setProperty('--a0-android-vw',`${window.visualViewport?.width||window.innerWidth}px`);
+   root.style.setProperty('--a0-android-vh',(window.visualViewport?.height||window.innerHeight)+'px');
+   root.style.setProperty('--a0-android-vw',(window.visualViewport?.width||window.innerWidth)+'px');
  };
  syncViewport();
  window.visualViewport?.addEventListener('resize',syncViewport,{passive:true});
