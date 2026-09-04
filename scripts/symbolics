@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly LOCAL_COMPOSE="$REPO_ROOT/docker/symbolics/compose.yml"
+readonly EXAMPLE_COMPOSE="$REPO_ROOT/docker/symbolics/compose.yml.example"
+readonly COMPOSE_FILE="${A0_SYMBOLICS_COMPOSE_FILE:-$([[ -f "$LOCAL_COMPOSE" ]] && printf '%s' "$LOCAL_COMPOSE" || printf '%s' "$EXAMPLE_COMPOSE")}"
+readonly PROJECT_NAME="${A0_SYMBOLICS_PROJECT:-a0-symbolics}"
+readonly BUILD_MEMORY="${A0_SYMBOLICS_BUILD_MEMORY:-8g}"
+
+compose_args=(docker compose --project-name "$PROJECT_NAME" --file "$COMPOSE_FILE")
+if [[ -f "$REPO_ROOT/.env" ]]; then
+  compose_args=(docker compose --env-file "$REPO_ROOT/.env" --project-name "$PROJECT_NAME" --file "$COMPOSE_FILE")
+fi
+
+compose() {
+  "${compose_args[@]}" "$@"
+}
+
+require_docker() {
+  docker info >/dev/null
+  compose config --quiet
+}
+
+ensure_default_external_volumes() {
+  if [[ "$COMPOSE_FILE" != "$EXAMPLE_COMPOSE" ]]; then
+    return
+  fi
+
+  local volume
+  for volume in \
+    "${A0_NIX_VOLUME:-a0-symbolics-nix}" \
+    "${A0_USR_VOLUME:-a0-symbolics-usr}"; do
+    if ! docker volume inspect "$volume" >/dev/null 2>&1; then
+      docker volume create "$volume" >/dev/null
+    fi
+  done
+}
+
+adopt_container_name() {
+  if ! docker container inspect agent-zero >/dev/null 2>&1; then
+    return
+  fi
+
+  local managed_project
+  managed_project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' agent-zero 2>/dev/null || true)"
+  if [[ "$managed_project" == "$PROJECT_NAME" ]]; then
+    return
+  fi
+
+  local preserved_name
+  preserved_name="agent-zero-pre-compose-$(date -u +%Y%m%dT%H%M%SZ)"
+  docker stop agent-zero >/dev/null
+  docker rename agent-zero "$preserved_name"
+  printf 'Preserved the previous container as %s.\n' "$preserved_name"
+}
+
+wait_for_health() {
+  local container_id status attempt
+  container_id="$(compose ps --quiet agent-zero)"
+  if [[ -z "$container_id" ]]; then
+    printf 'Agent Zero container was not created.\n' >&2
+    return 1
+  fi
+
+  for attempt in $(seq 1 180); do
+    status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id")"
+    case "$status" in
+      healthy)
+        return
+        ;;
+      unhealthy|exited|dead)
+        compose logs --tail=200 agent-zero >&2
+        printf 'Agent Zero entered terminal state: %s\n' "$status" >&2
+        return 1
+        ;;
+    esac
+    sleep 2
+  done
+
+  compose logs --tail=200 agent-zero >&2
+  printf 'Agent Zero did not become healthy within six minutes.\n' >&2
+  return 1
+}
+
+published_url() {
+  local binding port
+  binding="$(compose port agent-zero 80 | head -n 1)"
+  port="${binding##*:}"
+  printf 'http://127.0.0.1:%s' "$port"
+}
+
+verify() {
+  local container_id health url
+  compose config --quiet
+  container_id="$(compose ps --quiet agent-zero)"
+  test -n "$container_id"
+  health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id")"
+  [[ "$health" == healthy ]]
+
+  url="$(published_url)"
+  curl --fail --silent --show-error --max-time 10 "$url/" >/dev/null
+  curl --fail --silent --show-error --max-time 10 \
+    --header 'Accept: application/json' \
+    "$url/api/health" >/dev/null
+  compose exec --no-TTY agent-zero test -d /a0/usr/projects
+  compose exec --no-TTY agent-zero test -d /a0/usr/workdir
+  compose exec --no-TTY agent-zero swipl --version
+  compose exec --no-TTY agent-zero /opt/a0-symbolics/smoke.sh /a0
+  compose exec --no-TTY agent-zero cat /run/a0-symbolics/smoke.json
+  printf 'Symbolic Agent Zero is healthy at %s\n' "$url"
+}
+
+deploy() {
+  local pull="${1:-0}"
+  require_docker
+  ensure_default_external_volumes
+  if [[ "$pull" == 1 ]]; then
+    compose build --pull --memory "$BUILD_MEMORY"
+  else
+    compose build --memory "$BUILD_MEMORY"
+  fi
+  adopt_container_name
+  compose up --detach --no-build --remove-orphans
+  wait_for_health
+  verify
+}
+
+usage() {
+  printf 'Usage: %s {up|down|logs|status|update|verify}\n' "${0##*/}" >&2
+}
+
+case "${1:-}" in
+  up)
+    deploy 0
+    ;;
+  down)
+    require_docker
+    compose down
+    ;;
+  logs)
+    require_docker
+    compose logs --follow --tail=200 agent-zero
+    ;;
+  status)
+    require_docker
+    compose ps
+    if compose ps --quiet agent-zero | grep -q .; then
+      printf 'URL: %s\n' "$(published_url)"
+    fi
+    ;;
+  update)
+    deploy 1
+    ;;
+  verify)
+    require_docker
+    verify
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac

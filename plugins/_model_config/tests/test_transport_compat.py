@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import yaml
+
 from helpers import litellm_transport
 from plugins._model_config.helpers import transport_compat as compat
 
@@ -34,6 +38,41 @@ def _transport(
         ],
         kwargs=kwargs or {},
     )
+
+
+def test_openrouter_provider_defaults_to_responses():
+    project_root = Path(__file__).resolve().parents[3]
+    providers = yaml.safe_load(
+        (project_root / "conf" / "model_providers.yaml").read_text()
+    )
+
+    assert providers["chat"]["openrouter"]["kwargs"]["a0_api_mode"] == "responses"
+
+
+def test_openrouter_responses_use_full_local_history(monkeypatch):
+    monkeypatch.setattr(
+        compat.context_helper,
+        "get_context_data",
+        lambda key, default="": "stateless-chat",
+    )
+    local_items = [{"role": "user", "content": "full history"}]
+    transport = _transport(
+        "openrouter/openai/gpt-5.6-luna",
+        kwargs={
+            "previous_response_id": "gen-not-supported",
+            "responses_input_items": [
+                {"type": "function_call_output", "call_id": "call_1", "output": "ok"}
+            ],
+            "responses_local_input_items": local_items,
+        },
+    )
+
+    request = transport._responses_request(stream=False)
+
+    assert transport.policy.state == litellm_transport.RESPONSES_STATE_LOCAL
+    assert request["store"] is False
+    assert "previous_response_id" not in request
+    assert request["input"] == local_items
 
 
 def test_all_reasoning_efforts_pass_through_unchanged():

@@ -78,6 +78,9 @@ def install_transport_compat() -> None:
         slug = _openrouter_model_slug(self.model, kwargs)
         kwargs["a0_responses_reasoning_efforts"] = sorted(ALL_REASONING_EFFORTS)
         kwargs["a0_responses_none_is_reasoning_effort"] = True
+        # OpenRouter's Responses API is stateless: it rejects both store=true
+        # and previous_response_id, so every turn must include full local input.
+        kwargs["responses_state"] = litellm_transport.RESPONSES_STATE_LOCAL
         mode = openrouter_prompt_cache_mode(self.model, kwargs)
         explicit_caching = litellm_transport._coerce_bool(
             kwargs.get("a0_explicit_prompt_caching", False),
