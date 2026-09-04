@@ -113,6 +113,37 @@ def test_initializer_activates_pinned_prolog_rlm_and_generates_health_evidence()
     assert 'mv "$smoke_tmp" /run/a0-symbolics/smoke.json' in initializer
 
 
+def test_initializer_bounds_in_container_nix_parallelism():
+    initializer = (ROOT / "docker" / "symbolics" / "initialize.sh").read_text(encoding="utf-8")
+
+    assert "bound_nix_parallelism" in initializer
+    assert "/sys/fs/cgroup/memory.max" in initializer
+    assert "max-jobs = " in initializer
+    assert "cores = " in initializer
+    assert "${A0_NIX_MAX_JOBS:-}" in initializer
+    assert "${A0_NIX_CORES:-2}" in initializer
+
+    # Image-owned nix settings must survive the generated config update.
+    assert "'experimental-features = nix-command flakes'" in initializer
+    assert "'sandbox = false'" in initializer
+    assert "'build-users-group ='" in initializer
+
+    # The bound must be in place before any nix build runs.
+    boot = initializer[initializer.index("seed_home_manager\n"):]
+    assert boot.index("bound_nix_parallelism") < boot.index("activate_home_manager")
+
+
+def test_initializer_smoke_evidence_refreshes_for_container_lifetime():
+    initializer = (ROOT / "docker" / "symbolics" / "initialize.sh").read_text(encoding="utf-8")
+
+    # A one-shot boot window permanently starves the healthcheck whenever the
+    # UI is slow or recovering from a crash loop.
+    assert "seq 1 180" not in initializer
+    assert "while true; do" in initializer
+    assert "${A0_SMOKE_REFRESH_SECONDS:-30}" in initializer
+    assert 'mv "$smoke_tmp" /run/a0-symbolics/smoke.json' in initializer
+
+
 def test_symbolics_operator_scripts_are_executable_and_bound_build_memory():
     launcher = ROOT / "scripts" / "symbolics"
     text = launcher.read_text(encoding="utf-8")
