@@ -7,6 +7,7 @@ readonly HM_DIR="${A0_HOME_MANAGER_DIR:-/a0/usr/home-manager}"
 readonly HM_SEED_DIR="/opt/a0-symbolics/home-manager"
 readonly SYSTEM_JOBS_DIR="${A0_SYSTEM_JOBS_DIR:-/a0/usr/system-jobs}"
 readonly SUPERVISOR_CONF="/etc/supervisor/conf.d/supervisord.conf"
+readonly PERSISTENT_HOME_DIR="${A0_PERSISTENT_HOME_DIR:-/a0/usr/home}"
 
 seed_home_manager() {
   mkdir -p "$HM_DIR"
@@ -111,6 +112,42 @@ generate_smoke_evidence() {
   ) &
 }
 
+restore_home() {
+  local src="$PERSISTENT_HOME_DIR"
+  local dst="${A0_HOME_DIR:-/root}"
+
+  if [[ ! -d "$src" ]]; then
+    mkdir -p "$src"
+    printf 'Persistent home %s is empty; using a fresh %s.\n' "$src" "$dst"
+    return
+  fi
+
+  if [[ "$src" -ef "$dst" ]]; then
+    return
+  fi
+
+  mkdir -p "$dst"
+
+  local entry
+  local target
+  for entry in "$src"/* "$src"/.[!.]* "$src"/..?*; do
+    [[ -e "$entry" ]] || continue
+    target="$dst/$(basename "$entry")"
+    if [[ -e "$target" && ! -L "$target" ]]; then
+      # Replace only empty real directories (like a bare image-created .ssh);
+      # non-empty image- or Home-Manager-owned entries always win.
+      if [[ -d "$target" ]] && [[ -z "$(ls -A "$target" 2>/dev/null)" ]]; then
+        rm -rf -- "$target"
+      else
+        printf 'Keeping existing %s over persistent home entry %s.\n' "$target" "$entry"
+        continue
+      fi
+    fi
+    rm -rf -- "$target"
+    ln -s -- "$entry" "$target"
+  done
+}
+
 prepare_system_jobs() {
   local cron_bin="/root/.nix-profile/bin/cron"
 
@@ -141,6 +178,7 @@ seed_home_manager
 ensure_system_jobs_home_manager
 activate_home_manager
 activate_prolog_rlm
+restore_home
 prepare_system_jobs
 generate_smoke_evidence
 
