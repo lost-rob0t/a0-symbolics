@@ -7,20 +7,27 @@
 
 ## Ownership
 
-- `helpers/bridge.py` owns the persistent typed runtime bridge.
+- `helpers/harness/` owns the typed host seam: `Transport`/`Envelope` over the runtime worker and the `PrologRLM` client (`RunResult`, typed errors, shared-instance caching).
+- `helpers/loop.py` owns the core-loop model proxy (`PrologRLMModel`) that routes main-loop chat turns through the runtime per the reasoning-mode policy.
+- `helpers/bridge.py` owns the persistent typed runtime bridge (compatibility shim for the harness and smoke tooling).
+- `extensions/python/chat_model_call_before/` owns the core-loop model swap (`RouteReasoningMode`).
+- `api/runtime_policy.py` owns the chat-UI policy endpoint (mode + context budget read/write).
+- `webui/` owns the plugin settings form and the page-head policy control store.
 - `prolog/` owns the closed worker protocol and external Agent Zero pack loader.
 - `tools/` owns the agent-facing RLM, execution, Git, and patch adapters.
 - `hooks.py` owns the single permanent-tool declaration consumed lazily by the context compiler.
 - `prompts/` owns their provider-visible schemas and operating contracts.
-- `tests/` owns bridge, adapter, and pack boundary verification.
+- `tests/` owns harness, bridge, loop-policy, adapter, and pack boundary verification.
 
 ## Local Contracts
 
 - Never accept arbitrary Prolog goals or callable terms from model data.
+- Core-loop enforcement: when `core_loop_enabled`, every main-loop chat turn routes through `PrologRLMModel`; `direct` delegates to the inner A0 model (streaming preserved), `symbolic`/`symbolic-recursive`/`auto` turn through the runtime, which owns mode selection, recursion depth, and context ceilings. Runtime failures raise; they must never silently downgrade to native calls.
+- `context_budget_percent` (default 30) resolves against the inner model's `ctx_length` each turn; the runtime enforces the ceiling via `context_options(max_bytes)`, not Python.
 - Production coding adapters must reuse Agent Zero's existing execution and editor implementations; do not create a second shell or patch engine.
-- Tool execution remains subject to the normal Agent Zero tool lifecycle, scoped tool policy, intervention handling, and plugin hooks.
 - `git` is a closed read-only inspection adapter. Mutating Git operations remain explicit terminal work through an authorized execution tool.
 - `patch` retains the text editor's stale-read and structured-patch protections.
+- Tool execution remains subject to the normal Agent Zero tool lifecycle, scoped tool policy, intervention handling, and plugin hooks.
 - Credentials stay in the inherited process environment and must never appear in requests, results, logs, or repository files.
 
 ## Work Guidance
