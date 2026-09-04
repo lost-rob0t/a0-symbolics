@@ -11,7 +11,6 @@ if str(PROJECT_ROOT) not in sys.path:
 from helpers import task_scheduler
 from helpers.task_scheduler import AdHocTask, ScheduledTask, TaskSchedule
 
-
 class FixedDateTime(datetime):
     @classmethod
     def now(cls, tz=None):
@@ -157,3 +156,46 @@ def test_scheduler_missing_shared_context_still_logs_warning(monkeypatch):
     level, message = calls[0]
     assert level == "warning"
     assert "context not found" in message
+
+
+def test_scheduler_save_is_crash_safe(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        task_scheduler,
+        "get_abs_path",
+        lambda *parts: str(tmp_path.joinpath(*parts)),
+    )
+    monkeypatch.setattr(task_scheduler, "datetime", FixedDateTime)
+
+    task = ScheduledTask.create(
+        name="crash safe",
+        system_prompt="",
+        prompt="persist me",
+        schedule=TaskSchedule(
+            minute="*",
+            hour="*",
+            day="*",
+            month="*",
+            weekday="*",
+            timezone="UTC",
+        ),
+    )
+    tasks = task_scheduler.SchedulerTaskList(tasks=[task])
+    store = tmp_path / "usr" / "scheduler" / "tasks.json"
+
+    asyncio.run(tasks.save())
+
+    # The store must contain the saved task and no temp file may survive,
+    # so a mid-write crash can never leave a truncated or missing store
+    # that get() would silently recreate as empty.
+    import json
+
+    data = json.loads(store.read_text(encoding="utf-8"))
+    assert [t["uuid"] for t in data["tasks"]] == [task.uuid]
+    assert list(tmp_path.rglob("*.tmp")) == []
+
+    task_scheduler.SchedulerTaskList._SchedulerTaskList__instance = None
+    try:
+        reloaded = asyncio.run(task_scheduler.SchedulerTaskList.get())
+        assert [t.uuid for t in reloaded.tasks] == [task.uuid]
+    finally:
+        task_scheduler.SchedulerTaskList._SchedulerTaskList__instance = None
