@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import json
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -281,3 +282,29 @@ def test_extract_tool_request_still_prefers_json_requests() -> None:
 def test_xml_tool_request_is_not_misformatted() -> None:
     message = '<invoke name="code_execution_tool"><parameter name="code">x</parameter></invoke>'
     assert is_misformatted_tool_request(message) is False
+
+
+
+
+def test_extract_tool_request_recovers_invalid_json_with_raw_newlines() -> None:
+    # Models occasionally emit the text tool protocol with literal newlines
+    # inside string values (invalid JSON). The tolerant parser must still
+    # recover the request instead of the message degrading to chat text.
+    message = (
+        '{"tool_name": "text_editor", "tool_args": {"action": "write", '
+        '"content": "# Report\n\n**Target:** infra {target_name}\n", '
+        '"path": "/tmp/report.md"}}'
+    )
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(message)
+
+    request = extract_tool_request(message)
+    assert request is not None
+    assert request["tool_name"] == "text_editor"
+    assert request["tool_args"]["action"] == "write"
+    assert "{target_name}" in request["tool_args"]["content"]
+
+
+def test_extract_tool_request_still_requires_complete_message_for_valid_json() -> None:
+    message = '{"tool_name": "response", "tool_args": {"text": "ok"}} trailing'
+    assert extract_tool_request(message) is None
