@@ -59,7 +59,11 @@ class WorkerTransport:
         try:
             result = self.bridge.call(action, arguments)
         except PrologRuntimeBridgeError as exc:
-            return Envelope(ok=False, error=str(exc))
+            return Envelope(
+                ok=False,
+                error=str(exc),
+                detail=str(getattr(exc, "detail", "") or ""),
+            )
         return Envelope(ok=True, result=result)
 
 

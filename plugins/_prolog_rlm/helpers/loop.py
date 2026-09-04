@@ -44,20 +44,23 @@ def mode_budget_tokens(ctx_length: int, percent: int, mode: str) -> dict[str, An
     return completion_budget(context_budget_tokens(ctx_length, percent), mode)
 
 
+def _message_text(message: Any) -> str:
+    content = getattr(message, "content", message)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and isinstance(item.get("text"), str):
+                parts.append(item["text"])
+            else:
+                parts.append(str(item))
+        return "\n".join(part for part in parts if part)
+    return str(content)
+
+
 def _flatten_messages_text(messages: Any) -> str:
-    parts: list[str] = []
-    for message in messages or []:
-        content = getattr(message, "content", message)
-        if isinstance(content, str):
-            parts.append(content)
-        elif isinstance(content, list):
-            for item in content:
-                if isinstance(item, dict) and isinstance(item.get("text"), str):
-                    parts.append(item["text"])
-                else:
-                    parts.append(str(item))
-        else:
-            parts.append(str(content))
+    parts = [_message_text(message) for message in messages or []]
     return "\n".join(part for part in parts if part)
 
 
@@ -123,10 +126,34 @@ class PrologRLMModel:
                 **kwargs,
             )
 
-        query = user_message or ""
-        context = _flatten_messages_text(messages)
+        # The runtime completion contract requires non-empty query text
+        # (runtime_worker.pl rejects empty queries). Tool-call-only
+        # continuations arrive with an empty user_message and all content in
+        # messages: derive the query from the newest message and keep the
+        # rest as context so the turn still routes through the runtime.
+        query = str(user_message or "").strip()
+        prior = list(messages or [])
+        if not query and prior:
+            query = _message_text(prior[-1]).strip()
+            prior = prior[:-1]
+        context = _flatten_messages_text(prior)
         if system_message:
             context = f"{system_message}\n{context}"
+        if not query:
+            # Degenerate turn with no queryable text anywhere; the runtime
+            # cannot route it, so fall through to the inner model exactly
+            # like direct mode. This is not a runtime-failure downgrade.
+            return await self.inner.unified_turn(
+                system_message=system_message,
+                user_message=user_message,
+                messages=messages,
+                response_callback=response_callback,
+                reasoning_callback=reasoning_callback,
+                tokens_callback=tokens_callback,
+                rate_limiter_callback=rate_limiter_callback,
+                explicit_caching=explicit_caching,
+                **kwargs,
+            )
         result = await self.harness.complete(
             query,
             context,
