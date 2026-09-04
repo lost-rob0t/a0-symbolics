@@ -53,6 +53,7 @@
   - `async reload(self) -> 'SchedulerTaskList'`
   - `async add_task(self, task: Union[ScheduledTask, AdHocTask, PlannedTask]) -> 'SchedulerTaskList'`
   - `async save(self) -> 'SchedulerTaskList'`
+    - Persists to `usr/scheduler/tasks.json` atomically: writes a sibling `.tmp` file (fsynced) then `os.replace`s it over the target. A crash mid-write can never leave a truncated or missing store behind; `get()` would otherwise silently recreate an empty store and wipe every scheduled task.
   - `async update_task_by_uuid(self, task_uuid: str, updater_func: Callable[[Union[ScheduledTask, AdHocTask, PlannedTask]], None], verify_func: Callable[[Union[ScheduledTask, AdHocTask, PlannedTask]], bool]=...) -> Union[ScheduledTask, AdHocTask, PlannedTask] | None`
   - `get_tasks(self) -> list[Union[ScheduledTask, AdHocTask, PlannedTask]]`
   - `get_tasks_by_context_id(self, context_id: str, only_running: bool=...) -> list[Union[ScheduledTask, AdHocTask, PlannedTask]]`

@@ -576,7 +576,18 @@ class SchedulerTaskList(BaseModel):
                     "ERROR: Found null token in JSON output for an adhoc task"
                 )
 
-            write_file(path, json_data)
+            # Write to a temp file and replace the target in one step. A crash
+            # mid-write (for example an OOM kill) must never leave a truncated
+            # or missing tasks.json behind: get() would silently recreate an
+            # empty store and wipe every scheduled task.
+            abs_path = get_abs_path(path)
+            tmp_path = f"{abs_path}.tmp"
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                f.write(json_data)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, abs_path)
 
             # Debug: Verify after saving
             if exists(path):
