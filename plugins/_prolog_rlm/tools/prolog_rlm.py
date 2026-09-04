@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import Any
 
@@ -68,9 +67,7 @@ class PrologRLM(Tool):
             )
 
         try:
-            result = await asyncio.to_thread(
-                shared_harness(config).call, action, arguments
-            )
+            result = await shared_harness(config).call(action, arguments)
         except RuntimeFailure as exc:
             message = str(exc)
             if exc.detail:
