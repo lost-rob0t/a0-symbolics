@@ -57,6 +57,53 @@ nix_system() {
   esac
 }
 
+# In-container nix builds share the compose mem_limit with the supervised
+# services. Unbounded parallelism (nix defaults NIX_BUILD_CORES to every host
+# core) OOM-kills the services under an 8 GiB cap, so derive a conservative
+# job budget from the container's own cgroup limit. Operators override it with
+# A0_NIX_MAX_JOBS / A0_NIX_CORES.
+bound_nix_parallelism() {
+  local jobs cores conf="/etc/nix/nix.conf"
+
+  if [[ -n "${A0_NIX_MAX_JOBS:-}" ]]; then
+    jobs="$A0_NIX_MAX_JOBS"
+  else
+    local limit_bytes limit_gib
+    limit_bytes="$(cat /sys/fs/cgroup/memory.max 2>/dev/null || true)"
+    case "$limit_bytes" in
+      ''|max)
+        limit_bytes=$((8 * 1024 * 1024 * 1024))
+        ;;
+      *)
+        :
+        ;;
+    esac
+    limit_gib=$((limit_bytes / (1024 * 1024 * 1024)))
+    jobs=$((limit_gib / 4))
+    (( jobs < 1 )) && jobs=1
+    (( jobs > 4 )) && jobs=4
+  fi
+
+  cores="${A0_NIX_CORES:-2}"
+
+  install -d /etc/nix
+  if [[ ! -e "$conf" ]]; then
+    printf '%s\n' \
+      'experimental-features = nix-command flakes' \
+      'sandbox = false' \
+      'build-users-group =' \
+      > "$conf"
+  fi
+  sed -i -E '/^[[:space:]]*(max-jobs|cores)[[:space:]]*=/d' "$conf"
+  {
+    printf '# a0-symbolics: keep in-container nix builds inside the container\n'
+    printf '# memory bound; override with ~/.config/nix/nix.conf or\n'
+    printf '# A0_NIX_MAX_JOBS / A0_NIX_CORES.\n'
+    printf 'max-jobs = %s\n' "$jobs"
+    printf 'cores = %s\n' "$cores"
+  } >> "$conf"
+}
+
 activate_home_manager() {
   mkdir -p \
     /nix/store \
@@ -92,22 +139,29 @@ activate_prolog_rlm() {
 
 generate_smoke_evidence() {
   (
-    local attempt
     local smoke_tmp="/run/a0-symbolics/smoke.json.$$"
+    local refresh_seconds="${A0_SMOKE_REFRESH_SECONDS:-30}"
+    local ready=0
 
     install -d /run/a0-symbolics
-    for attempt in $(seq 1 180); do
+    # Keep producing readiness evidence for the container lifetime. A one-shot
+    # boot window permanently starves healthcheck.sh whenever the UI is slow
+    # or recovering from a crash loop, leaving the container unhealthy forever.
+    while true; do
       if curl --fail --silent --max-time 2 http://127.0.0.1:80/ >/dev/null; then
         if /opt/a0-symbolics/smoke.sh /a0 > "$smoke_tmp"; then
           mv "$smoke_tmp" /run/a0-symbolics/smoke.json
+          ready=1
         else
           rm -f "$smoke_tmp"
         fi
-        return
+        sleep "$refresh_seconds"
+      elif (( ready == 0 )); then
+        sleep 2
+      else
+        sleep "$refresh_seconds"
       fi
-      sleep 2
     done
-    printf 'Agent Zero did not become ready for the symbolic smoke test.\n' >&2
   ) &
 }
 
@@ -139,6 +193,7 @@ prepare_system_jobs() {
 
 seed_home_manager
 ensure_system_jobs_home_manager
+bound_nix_parallelism
 activate_home_manager
 activate_prolog_rlm
 prepare_system_jobs

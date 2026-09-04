@@ -20,6 +20,8 @@
 - Treat the committed Home Manager files as first-boot defaults only. Never overwrite a user's persisted Home Manager configuration during later starts.
 - Keep Nix daemonless inside the container and enable flakes with sandboxing disabled for container compatibility.
 - Bound both image builds and the running service to 8 GiB by default; local operators may choose a different explicit build limit.
+- Bound in-container nix builds with bounded parallelism derived from the same memory reality: `initialize.sh` derives `max-jobs`/`cores` from the container cgroup limit and writes them into `/etc/nix/nix.conf`, preserving the image-owned settings. Never rely on nix's default per-host parallelism inside a memory-capped container; operators override with `A0_NIX_MAX_JOBS`, `A0_NIX_CORES`, or `~/.config/nix/nix.conf`.
+- Generate smoke evidence for the container lifetime: `generate_smoke_evidence` retries until readiness and keeps refreshing `/run/a0-symbolics/smoke.json` (default every 30 s, `A0_SMOKE_REFRESH_SECONDS`). A one-shot boot window can permanently starve `healthcheck.sh` after a slow start or crash loop.
 - Treat any non-running supervised process as unhealthy; HTTP and cached smoke evidence alone are insufficient readiness evidence.
 - Never bake secrets or local user data into the image.
 - Never track `docker/symbolics/compose.yml`; local ports, mounts, devices, and machine-specific overrides belong there.
@@ -39,6 +41,7 @@
 - Confirm the example compose file has exactly two persistent mounts: `/nix` and `/a0/usr`.
 - Confirm `git check-ignore docker/symbolics/compose.yml` succeeds.
 - Run `pytest tests/test_symbolics_live_api.py` with `A0_SYMBOLICS_URL` set to the published HTTP URL to exercise the live UI and `/api/health` route.
+- Run `pytest tests/test_symbolics_docker.py` after changing `initialize.sh`, `healthcheck.sh`, or the compose example; it asserts the bounded-nix, smoke-refresh, and supervisor-readiness contracts.
 
 ## Child DOX Index
 
