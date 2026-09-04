@@ -27,6 +27,13 @@ def extract_tool_request(content: str) -> dict[str, Any] | None:
     content = content.strip()
     root = extract_json_root_string(content)
     if root != content:
+        if not root and content.startswith("{"):
+            # Regex root slicing failed (for example raw control characters
+            # inside string values). The tolerant parser can still recover
+            # the complete tool request from the whole message.
+            request = _parse_json_root_object(content)
+            if request is not None and _is_tool_request(request):
+                return request
         return extract_xml_tool_request(content)
 
     request = _parse_json_root_object(root)
