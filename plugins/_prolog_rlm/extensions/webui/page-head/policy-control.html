@@ -1,0 +1,32 @@
+<html>
+<head>
+  <title>Prolog-RLM Policy Control</title>
+  <script type="module" src="/plugins/_prolog_rlm/webui/policy-store.js"></script>
+</head>
+<body>
+  <div x-data>
+    <template x-if="$store.prologRlmPolicyStore">
+      <div x-init="$store.prologRlmPolicyStore.init()"
+           style="display:flex;align-items:center;gap:6px;padding:2px 6px;"
+           title="Prolog-RLM reasoning policy (issue #77)">
+        <span style="font-size:12px;opacity:.7;">RLM</span>
+        <select x-model="$store.prologRlmPolicyStore.reasoning_mode"
+                :disabled="$store.prologRlmPolicyStore.busy"
+                style="font-size:12px;padding:2px 4px;border-radius:6px;"
+                @change="$store.prologRlmPolicyStore.setMode($event.target.value)">
+          <option value="auto">Auto</option>
+          <option value="direct">Direct</option>
+          <option value="symbolic">Symbolic</option>
+          <option value="symbolic-recursive">Symbolic+R</option>
+        </select>
+        <span style="font-size:12px;opacity:.7;">ctx%</span>
+        <input type="number" min="1" max="100"
+               x-model.number="$store.prologRlmPolicyStore.context_budget_percent"
+               style="width:56px;font-size:12px;padding:2px 4px;border-radius:6px;"
+               :disabled="$store.prologRlmPolicyStore.busy"
+               @change="$store.prologRlmPolicyStore.setBudget()" />
+        </div>
+    </template>
+  </div>
+</body>
+</html>
