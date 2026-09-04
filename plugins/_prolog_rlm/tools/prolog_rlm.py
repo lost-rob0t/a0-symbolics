@@ -7,10 +7,7 @@ from typing import Any
 from helpers import plugins
 from helpers.tool import Response, Tool
 from plugins._prolog_context_compiler.helpers.catalog import build_compile_request
-from plugins._prolog_rlm.helpers.bridge import (
-    PrologRuntimeBridgeError,
-    shared_runtime_bridge,
-)
+from plugins._prolog_rlm.helpers.harness import RuntimeFailure, shared_harness
 
 
 PLUGIN_NAME = "_prolog_rlm"
@@ -72,12 +69,15 @@ class PrologRLM(Tool):
 
         try:
             result = await asyncio.to_thread(
-                shared_runtime_bridge(config).call, action, arguments
+                shared_harness(config).call, action, arguments
             )
-        except PrologRuntimeBridgeError as exc:
-            return Response(message=f"Prolog-RLM failed: {exc}", break_loop=False)
+        except RuntimeFailure as exc:
+            message = str(exc)
+            if exc.detail:
+                message = f"{message}: {exc.detail}"
+            return Response(message=f"Prolog-RLM failed: {message}", break_loop=False)
 
-        rendered = json.dumps(result, ensure_ascii=False, sort_keys=True)
+        rendered = json.dumps(result.payload, ensure_ascii=False, sort_keys=True)
         limit = max(1000, int(config.get("max_tool_result_chars", 50_000)))
         if len(rendered) > limit:
             rendered = rendered[:limit] + "…[bounded Prolog-RLM result]"
