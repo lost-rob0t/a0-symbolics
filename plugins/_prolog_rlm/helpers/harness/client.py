@@ -6,6 +6,7 @@ caller (tools, extensions, API handlers) without exposing worker internals.
 
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 import uuid
@@ -36,10 +37,17 @@ class RunResult:
 
 
 class PrologRLM:
+    """Async typed client over the runtime worker.
+
+    The worker transport is blocking; every call offloads it with
+    ``asyncio.to_thread`` so chat-loop event loops stay responsive. Callers
+    await these methods directly (``await harness.complete(...)``).
+    """
+
     def __init__(self, transport: Transport) -> None:
         self.transport = transport
 
-    def call(
+    async def call(
         self,
         action: str,
         arguments: dict[str, Any] | None = None,
@@ -50,7 +58,9 @@ class PrologRLM:
             raise HarnessError("Prolog-RLM action is required")
         run_id = uuid.uuid4().hex
         started = time.perf_counter()
-        envelope = self.transport.run(action, arguments or {}, timeout=timeout)
+        envelope = await asyncio.to_thread(
+            self.transport.run, action, arguments or {}, timeout
+        )
         elapsed = time.perf_counter() - started
         if not envelope.ok:
             raise RuntimeFailure(
@@ -65,28 +75,28 @@ class PrologRLM:
             elapsed_seconds=elapsed,
         )
 
-    def status(self, timeout: float | None = None) -> RunResult:
-        return self.call("status", timeout=timeout)
+    async def status(self, timeout: float | None = None) -> RunResult:
+        return await self.call("status", timeout=timeout)
 
-    def direct(self, prompt: str, budget: dict[str, Any] | None = None,
-               timeout: float | None = None) -> RunResult:
-        return self.call(
+    async def direct(self, prompt: str, budget: dict[str, Any] | None = None,
+                     timeout: float | None = None) -> RunResult:
+        return await self.call(
             "direct",
             {"prompt": prompt, "budget": budget or {}},
             timeout=timeout,
         )
 
-    def complete(self, query: str, context: str = "",
-                 budget: dict[str, Any] | None = None,
-                 timeout: float | None = None) -> RunResult:
-        return self.call(
+    async def complete(self, query: str, context: str = "",
+                       budget: dict[str, Any] | None = None,
+                       timeout: float | None = None) -> RunResult:
+        return await self.call(
             "complete",
             {"query": query, "context": context, "budget": budget or {}},
             timeout=timeout,
         )
 
-    def demo(self, name: str = "context", timeout: float | None = None) -> RunResult:
-        return self.call("demo", {"name": name}, timeout=timeout)
+    async def demo(self, name: str = "context", timeout: float | None = None) -> RunResult:
+        return await self.call("demo", {"name": name}, timeout=timeout)
 
 
 _harnesses: dict[tuple[str, str, float], PrologRLM] = {}

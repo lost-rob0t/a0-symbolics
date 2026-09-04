@@ -23,6 +23,9 @@
 
 - Never accept arbitrary Prolog goals or callable terms from model data.
 - Core-loop enforcement: when `core_loop_enabled`, every main-loop chat turn routes through `PrologRLMModel`; `direct` delegates to the inner A0 model (streaming preserved), `symbolic`/`symbolic-recursive`/`auto` turn through the runtime, which owns mode selection, recursion depth, and context ceilings. Runtime failures raise; they must never silently downgrade to native calls.
+- Textless turns route validly: a turn with an empty user message derives its query from the newest message text (earlier messages stay context) so the runtime's non-empty-query contract holds; only a turn with no queryable text anywhere falls through to the inner model exactly like direct mode (a degenerate turn, not a runtime-failure downgrade).
+- Worker request rejections report `runtime_request_error: <reason>` with the original term in `detail`; the bridge carries that detail on `PrologRuntimeBridgeError`. SWI's `Unknown message: ...` rendering must never reach host callers.
+- The harness client (`PrologRLM`) is async: callers `await` its methods, and the blocking worker transport runs off the event loop via `asyncio.to_thread`. Never wrap harness calls in `asyncio.to_thread` at call sites.
 - `context_budget_percent` (default 30) resolves against the inner model's `ctx_length` each turn; the runtime enforces the ceiling via `context_options(max_bytes)`, not Python.
 - Production coding adapters must reuse Agent Zero's existing execution and editor implementations; do not create a second shell or patch engine.
 - `git` is a closed read-only inspection adapter. Mutating Git operations remain explicit terminal work through an authorized execution tool.

@@ -118,6 +118,46 @@ class TestPrologRLMModel:
         assert "ctx two" in context
         assert harness.calls[0]["query"] == "USER"
 
+    def test_textless_user_message_derives_query_from_newest_message(self):
+        import asyncio
+
+        harness = HarnessStub()
+        model = PrologRLMModel(InnerModel(), harness, reasoning_mode=SYMBOLIC)
+        asyncio.run(
+            model.unified_turn(
+                user_message="",
+                messages=messages("ctx one", "newest turn"),
+            )
+        )
+        call = harness.calls[0]
+        assert call["query"] == "newest turn"
+        assert "ctx one" in call["context"]
+        assert "newest turn" not in call["context"]
+
+    def test_tool_call_continuation_derives_query_from_structured_content(self):
+        import asyncio
+
+        harness = HarnessStub()
+        model = PrologRLMModel(InnerModel(), harness, reasoning_mode=SYMBOLIC)
+        tool_message = SimpleNamespace(
+            content=[{"type": "tool_use", "name": "response"}]
+        )
+        asyncio.run(
+            model.unified_turn(user_message="", messages=[tool_message])
+        )
+        assert harness.calls[0]["query"].strip() != ""
+
+    def test_degenerate_textless_turn_falls_through_to_inner(self):
+        import asyncio
+
+        inner = InnerModel()
+        harness = HarnessStub()
+        model = PrologRLMModel(inner, harness, reasoning_mode=SYMBOLIC)
+        result = asyncio.run(model.unified_turn(user_message="", messages=[]))
+        assert result.response == "native text"
+        assert len(inner.calls) == 1
+        assert harness.calls == []
+
     def test_response_callback_gets_full_text_once(self):
         import asyncio
 

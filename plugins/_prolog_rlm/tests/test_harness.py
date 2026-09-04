@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
 import os
 import shutil
+import threading
 from pathlib import Path
 
 import pytest
@@ -36,9 +39,27 @@ def ok_envelope(payload=None):
 
 
 class TestClient:
+    def test_call_is_async_and_runs_off_the_event_loop(self):
+        # The chat loop awaits harness calls; the client must be awaitable
+        # and must never block the loop with the blocking worker transport.
+        assert inspect.iscoroutinefunction(PrologRLM.call)
+        main_thread = threading.get_ident()
+        seen_threads = []
+
+        class ThreadRecordingTransport(FakeTransport):
+            def run(self, action, arguments, timeout=None):
+                seen_threads.append(threading.get_ident())
+                return super().run(action, arguments, timeout)
+
+        result = asyncio.run(
+            PrologRLM(ThreadRecordingTransport(ok_envelope())).call("status")
+        )
+        assert isinstance(result, RunResult)
+        assert seen_threads and seen_threads[0] != main_thread
+
     def test_call_returns_structured_run_result(self):
         transport = FakeTransport(ok_envelope({"ready": True}))
-        result = PrologRLM(transport).call("status")
+        result = asyncio.run(PrologRLM(transport).call("status"))
         assert isinstance(result, RunResult)
         assert len(result.run_id) == 32
         assert result.action == "status"
@@ -47,36 +68,36 @@ class TestClient:
 
     def test_call_passes_arguments_and_timeout(self):
         transport = FakeTransport(ok_envelope())
-        PrologRLM(transport).call(
-            "direct", {"prompt": "hi"}, timeout=7.5
+        asyncio.run(
+            PrologRLM(transport).call("direct", {"prompt": "hi"}, timeout=7.5)
         )
         assert transport.calls == [("direct", {"prompt": "hi"}, 7.5)]
 
     def test_blank_action_is_rejected_before_transport(self):
         transport = FakeTransport(ok_envelope())
         with pytest.raises(HarnessError):
-            PrologRLM(transport).call("  ")
+            asyncio.run(PrologRLM(transport).call("  "))
         assert transport.calls == []
 
     def test_failed_envelope_raises_runtime_failure(self):
         transport = FakeTransport(Envelope(ok=False, error="boom", detail="ctx"))
         with pytest.raises(RuntimeFailure) as excinfo:
-            PrologRLM(transport).call("direct", {"prompt": "hi"})
+            asyncio.run(PrologRLM(transport).call("direct", {"prompt": "hi"}))
         assert excinfo.value.error == "boom"
         assert excinfo.value.detail == "ctx"
 
     def test_transport_errors_propagate(self):
         transport = FakeTransport(error=PrologRuntimeBridgeError("worker gone"))
         with pytest.raises(PrologRuntimeBridgeError):
-            PrologRLM(transport).call("status")
+            asyncio.run(PrologRLM(transport).call("status"))
 
     def test_convenience_actions_map_to_runtime_actions(self):
         transport = FakeTransport(ok_envelope())
         client = PrologRLM(transport)
-        client.status()
-        client.demo("graph")
-        client.direct("hi", {"max_total_tokens": 512})
-        client.complete("q", "ctx")
+        asyncio.run(client.status())
+        asyncio.run(client.demo("graph"))
+        asyncio.run(client.direct("hi", {"max_total_tokens": 512}))
+        asyncio.run(client.complete("q", "ctx"))
         assert [c[0] for c in transport.calls] == [
             "status", "demo", "direct", "complete"
         ]
@@ -135,11 +156,12 @@ PROLOG_RLM_AVAILABLE = bool(
 )
 class TestLiveRuntime:
     def test_harness_reports_runtime_status(self):
-        result = shared_harness(
+        status_call = shared_harness(
             {
                 "prolog_rlm_root": str(PROLOG_RLM_ROOT),
                 "request_timeout_seconds": 10.0,
             }
         ).status()
+        result = asyncio.run(status_call)
         assert result.payload["ready"] is True
         assert result.payload["runtime"] == "prolog-rlm"
