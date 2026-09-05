@@ -40,8 +40,6 @@ jobs:
 
       - name: Install Nix
         uses: https://github.com/cachix/install-nix-action@v31.11.1
-        with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Refresh exact Prolog-RLM lock
         shell: bash
@@ -149,8 +147,6 @@ jobs:
 
       - name: Install Nix
         uses: https://github.com/cachix/install-nix-action@v31.11.1
-        with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Nix integration gate
         shell: bash
