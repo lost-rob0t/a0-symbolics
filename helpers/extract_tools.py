@@ -27,10 +27,123 @@ def extract_tool_request(content: str) -> dict[str, Any] | None:
     content = content.strip()
     root = extract_json_root_string(content)
     if root != content:
-        return None
+        if not root and content.startswith("{"):
+            # Regex root slicing failed (for example raw control characters
+            # inside string values). The tolerant parser can still recover
+            # the complete tool request from the whole message.
+            request = _parse_json_root_object(content)
+            if request is not None and _is_tool_request(request):
+                return request
+        return extract_xml_tool_request(content)
 
     request = _parse_json_root_object(root)
-    return request if request is not None and _is_tool_request(request) else None
+    if request is not None and _is_tool_request(request):
+        return request
+    return extract_xml_tool_request(content)
+
+
+_XML_INVOKE_TOKEN_RE = re.compile(
+    r'<invoke\s+name=["\'][^"\']+["\']\s*>|</invoke\s*>', re.IGNORECASE
+)
+_XML_INVOKE_OPEN_RE = re.compile(r'<invoke\s+name=["\']([^"\']+)["\']\s*>', re.IGNORECASE)
+_XML_PARAM_RE = re.compile(
+    r'<parameter\s+name=["\']([^"\']+)["\']\s*>(.*?)</parameter\s*>',
+    re.DOTALL | re.IGNORECASE,
+)
+_PARALLEL_TOOL_NAMES = {"parallel_tool_calls", "parallel"}
+
+
+def _xml_invoke_span(content: str, start: int) -> tuple[str, str, int]:
+    """Return (name, body, end) for the balanced <invoke> block beginning at
+    content[start], tolerating nested <invoke> blocks."""
+    open_match = _XML_INVOKE_OPEN_RE.match(content, start)
+    if not open_match:
+        raise ValueError("not an invoke open tag")
+    depth = 1
+    close_match = None
+    for token in _XML_INVOKE_TOKEN_RE.finditer(content, open_match.end()):
+        if token.group().startswith("</"):
+            depth -= 1
+        else:
+            depth += 1
+        if depth == 0:
+            close_match = token
+            break
+    if close_match is None:
+        raise ValueError("unterminated invoke block")
+    name = open_match.group(1).strip()
+    body = content[open_match.end() : close_match.start()]
+    return name, body, close_match.end()
+
+
+def _xml_invoke_request(name: str, body: str) -> dict[str, Any]:
+    params = {
+        param.group(1).strip(): param.group(2)
+        for param in _XML_PARAM_RE.finditer(body)
+    }
+    return {"tool_name": name, "tool_args": params}
+
+
+def extract_xml_tool_request(content: str) -> dict[str, Any] | None:
+    """Parse OpenAI-style text tool calls (<invoke name=...><parameter
+    name=...>...</parameter></invoke>) into the framework tool-request
+    shape. Only messages that start with an invoke block are considered, so
+    explanatory prose is never hijacked into a tool call. Nested invokes
+    inside a parallel wrapper become its `calls` list; multiple sibling
+    top-level invokes do the same."""
+    if not content or not isinstance(content, str):
+        return None
+    stripped = content.strip()
+    if not stripped.startswith("<invoke"):
+        return None
+
+    blocks: list[tuple[str, str, int]] = []
+    cursor = 0
+    try:
+        while True:
+            open_match = _XML_INVOKE_OPEN_RE.search(stripped, cursor)
+            if not open_match:
+                break
+            if stripped[cursor : open_match.start()].strip():
+                return None
+            blocks.append(_xml_invoke_span(stripped, open_match.start()))
+            cursor = blocks[-1][2]
+    except ValueError:
+        return None
+    if stripped[cursor:].strip() or not blocks:
+        return None
+
+    if len(blocks) > 1:
+        calls = [_xml_invoke_request(name, body) for name, body, _ in blocks]
+        return {"tool_name": "parallel", "tool_args": {"calls": calls}}
+
+    name, body, _ = blocks[0]
+    nested_opens = list(_XML_INVOKE_OPEN_RE.finditer(body))
+    if name in _PARALLEL_TOOL_NAMES:
+        if nested_opens:
+            calls = []
+            inner_cursor = 0
+            for open_match in nested_opens:
+                if body[inner_cursor : open_match.start()].strip():
+                    return None
+                inner_name, inner_body, inner_end = _xml_invoke_span(
+                    body, open_match.start()
+                )
+                calls.append(_xml_invoke_request(inner_name, inner_body))
+                inner_cursor = inner_end
+            if body[inner_cursor:].strip() or not calls:
+                return None
+            return {"tool_name": "parallel", "tool_args": {"calls": calls}}
+        params = {
+            param.group(1).strip(): param.group(2)
+            for param in _XML_PARAM_RE.finditer(body)
+        }
+        if not params:
+            return None
+        return {"tool_name": "parallel", "tool_args": params}
+    if nested_opens:
+        return None
+    return _xml_invoke_request(name, body)
 
 
 def is_misformatted_tool_request(content: str) -> bool:
