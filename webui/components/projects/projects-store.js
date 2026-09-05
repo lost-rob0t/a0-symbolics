@@ -16,8 +16,24 @@ const editModal = "projects/project-edit.html";
 // define the model object holding data and functions
 const model = {
   projectList: [],
+  projectSearch: "",
   selectedProject: null,
   editData: null,
+
+  projectSearchActive() {
+    return (this.projectSearch || "").trim().length > 0;
+  },
+
+  filteredProjectList() {
+    const q = (this.projectSearch || "").trim().toLowerCase();
+    if (!q) return this.projectList;
+    return this.projectList.filter((project) =>
+      (project.title || "").toLowerCase().includes(q) ||
+      (project.name || "").toLowerCase().includes(q) ||
+      (project.description || "").toLowerCase().includes(q),
+    );
+  },
+
   colors: [
     "#7b2cbf", // Deep Purple
     "#8338ec", // Blue Violet

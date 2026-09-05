@@ -1429,7 +1429,9 @@ class Agent:
                 tool_request = None  # treat structural validation errors as misformat
 
         if tool_request is not None:
-            tool_name = raw_tool_name  # Initialize tool_name with raw_tool_name
+            tool_name = original_tool_name(
+                raw_tool_name, self.get_data(Agent.DATA_NAME_RESPONSES_TOOL_NAME_MAP)
+            )
             tool_method = None  # Initialize tool_method
 
             tool = None  # Initialize tool to None
