@@ -5,6 +5,6 @@ actions:
 - `status`, `catalog`: inspect the stable runtime and bridge
 - `demo`: deterministic `context`, `tool`, `recursion`, `agent`, `graph`, or `mcp`
 - `validate_tools`: validate enabled Agent Zero/MCP declarations without granting authority
-- `direct`: one bounded OpenRouter-backed model call
-- `complete`: bounded recursive completion over query and context
+- `direct`: bounded OpenRouter-backed direct agent session over the compiled Agent Zero context, recursion enabled
+- `complete`: bounded recursive completion over the compiled context plus explicit context
 never send Prolog code callable terms credentials shell commands or filesystem paths
