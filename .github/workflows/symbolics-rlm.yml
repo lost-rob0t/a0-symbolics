@@ -1,0 +1,167 @@
+name: Symbolics RLM
+
+on:
+  pull_request:
+    paths:
+      - "flake.nix"
+      - "flake.lock"
+      - "nix/**"
+      - "plugins/_symbolics/**"
+      - "plugins/_prolog_rlm/**"
+      - "plugins/_prolog_context_compiler/**"
+      - ".github/workflows/symbolics-rlm.yml"
+  push:
+    paths:
+      - "flake.nix"
+      - "flake.lock"
+      - "nix/**"
+      - "plugins/_symbolics/**"
+      - "plugins/_prolog_rlm/**"
+      - "plugins/_prolog_context_compiler/**"
+      - ".github/workflows/symbolics-rlm.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: symbolics-rlm-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout Symbolics exact candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install Nix
+        uses: https://github.com/cachix/install-nix-action@v31.11.1
+
+      - name: Refresh exact Prolog-RLM lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix flake lock --update-input prolog-rlm
+          cat flake.lock
+
+      - name: Export regenerated lock evidence
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: regenerated-flake-lock
+          path: flake.lock
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Require committed lock consistency
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- flake.lock
+
+      - name: Checkout pinned Prolog-RLM test source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rev="$(jq -r '.nodes["prolog-rlm"].locked.rev' flake.lock)"
+          test -n "$rev"
+          git clone --quiet --filter=blob:none https://github.com/lost-rob0t/prolog-rlm "$RUNNER_TEMP/prolog-rlm"
+          git -C "$RUNNER_TEMP/prolog-rlm" checkout --quiet "$rev"
+          echo "PROLOG_RLM_TEST_ROOT=$RUNNER_TEMP/prolog-rlm" >> "$GITHUB_ENV"
+
+      - name: Build focused Symbolics test environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_python="$(nix build --no-link --print-out-paths --impure --expr '
+            let
+              flake = builtins.getFlake (toString ./.);
+              pkgs = import flake.inputs.nixpkgs { system = "x86_64-linux"; };
+            in
+              import ./nix/symbolics-test-env.nix { inherit pkgs; }
+          ')"
+          echo "SYMBOLICS_TEST_PYTHON=$test_python" >> "$GITHUB_ENV"
+          if nix path-info -r "$test_python" | grep -Eiq '/(torch|torchaudio|openai-whisper|sentence-transformers)-'; then
+            echo "Focused Symbolics test closure unexpectedly contains heavyweight ML runtime packages." >&2
+            exit 1
+          fi
+
+      - name: Prepare focused Agent Zero runtime layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/usr" "$GITHUB_WORKSPACE/tmp"
+          if [ -e /a0 ] || [ -L /a0 ]; then
+            test "$(readlink -f /a0)" = "$GITHUB_WORKSPACE"
+          else
+            sudo ln -s "$GITHUB_WORKSPACE" /a0
+          fi
+          test -w "$GITHUB_WORKSPACE/usr"
+          test -w "$GITHUB_WORKSPACE/tmp"
+          test "$(readlink -f /a0)" = "$GITHUB_WORKSPACE"
+
+      - name: Focused runtime-mode and bridge tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$SYMBOLICS_TEST_PYTHON/bin:$PATH"
+          command -v swipl >/dev/null
+          {
+            echo "== Native/default contracts =="
+            "$SYMBOLICS_TEST_PYTHON/bin/python" -m pytest -q --durations=20 \
+              plugins/_symbolics/tests \
+              plugins/_prolog_rlm/tests \
+              tests/test_default_prompt_budget.py \
+              tests/test_plugin_activation_ui.py
+
+            echo "== Activate the paired RLM control plane =="
+            export A0_SYMBOLICS_MODE=rlm
+            "$SYMBOLICS_TEST_PYTHON/bin/python" -c 'from helpers import plugins; from plugins._symbolics.helpers.mode import sync_runtime_mode; assert sync_runtime_mode() == "rlm"; assert plugins.get_toggle_state("_prolog_rlm") == "enabled"; assert plugins.get_toggle_state("_prolog_context_compiler") == "enabled"'
+
+            echo "== RLM context/compiler contracts =="
+            "$SYMBOLICS_TEST_PYTHON/bin/python" -m pytest -q --durations=20 \
+              plugins/_prolog_context_compiler/tests
+          } 2>&1 | tee "$RUNNER_TEMP/symbolics-focused-pytest.log"
+
+      - name: Export focused pytest evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: symbolics-focused-pytest-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/symbolics-focused-pytest.log
+          if-no-files-found: ignore
+          retention-days: 3
+
+  nix-integration:
+    needs: focused
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout Symbolics exact candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install Nix
+        uses: https://github.com/cachix/install-nix-action@v31.11.1
+
+      - name: Nix integration gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix flake check -L 2>&1 | tee "$RUNNER_TEMP/symbolics-nix-flake-check.log"
+
+      - name: Export Nix integration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: symbolics-nix-flake-check-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/symbolics-nix-flake-check.log
+          if-no-files-found: ignore
+          retention-days: 3

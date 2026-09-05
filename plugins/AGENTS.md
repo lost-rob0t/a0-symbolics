@@ -98,6 +98,7 @@ Direct child DOX files:
 | [_plugin_validator/AGENTS.md](_plugin_validator/AGENTS.md) | Plugin manifest, structure, convention, and security validator. |
 | [_promptinclude/AGENTS.md](_promptinclude/AGENTS.md) | Promptinclude scanning and prompt injection. |
 | [_skills/AGENTS.md](_skills/AGENTS.md) | Active and hidden skill configuration and prompt injection. |
+| [_symbolics/AGENTS.md](_symbolics/AGENTS.md) | Native/RLM runtime-mode coordination and paired Prolog-RLM activation. |
 | [_telegram_integration/AGENTS.md](_telegram_integration/AGENTS.md) | Telegram bot integration and per-user chat sessions. |
 | [_text_editor/AGENTS.md](_text_editor/AGENTS.md) | Native text read, write, and patch tool. |
 | [_time_travel/AGENTS.md](_time_travel/AGENTS.md) | Workspace history, diff, travel, snapshot, and revert flows. |

@@ -1,6 +1,7 @@
-{ pkgs }:
+{ pkgs, focused ? false }:
 let
   ps = pkgs.python312Packages;
+
   patchright = ps.buildPythonPackage {
     pname = "patchright";
     version = "1.61.2";
@@ -96,7 +97,12 @@ let
     doCheck = false;
     dontCheckRuntimeDeps = true;
   };
-  packages = with ps; [
+  focusedPackages = (with ps; [
+    crontab cryptography faiss-cpu flask gitpython giturlparse litellm markdown mcp nest-asyncio paramiko
+    pathspec pillow pydantic python-dotenv python-socketio pytest pytest-asyncio pytest-mock
+    pytz simpleeval tiktoken watchdog webcolors
+  ]) ++ [ langchainCore langchain langchainCommunity ];
+  fullPackages = (with ps; [
     a2wsgi aiogram asgiref beautifulsoup4 boto3 chardet crontab
     duckduckgoSearch exchangelib faiss-cpu fastmcp flask gitpython
     giturlparse html2text imapclient langchain langchainCommunity
@@ -105,7 +111,8 @@ let
     pdf2image psutil pydantic pymupdf pypdf pytesseract python-dotenv
     python-socketio pytz sentence-transformers simpleeval soundfile
     tiktoken unstructured unstructured-client uvicorn watchdog webcolors
-    wsproto patchright pytest pytest-asyncio pytest-mock
-  ];
+    wsproto pytest pytest-asyncio pytest-mock
+  ]) ++ [ patchright ];
+  packages = if focused then focusedPackages else fullPackages;
 in
 pkgs.python312.withPackages (_: packages)

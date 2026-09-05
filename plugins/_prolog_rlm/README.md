@@ -7,6 +7,11 @@ selection, completion, recursive queries, supervised agents, plans,
 capabilities, authority, durable effects, graphs, artifacts, Specs, MCP,
 cancellation, tracing, usage, and structured outcomes.
 
+The `_symbolics` coordinator owns activation. In `native` mode this plugin and
+`_prolog_context_compiler` are both absent from the active plugin set. In `rlm`
+mode they are enabled together so Agent Zero cannot accidentally run a mixed
+native/symbolic control plane.
+
 The agent-facing `prolog_rlm` tool exposes only a fixed operation catalog. It
 never accepts arbitrary Prolog, `call/1`, callable terms, credentials, shell
 commands, or ambient filesystem authority. `direct` and `complete` use the
