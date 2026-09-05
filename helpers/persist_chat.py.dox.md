@@ -2,73 +2,43 @@
 
 ## Purpose
 
-- Own the `persist_chat.py` helper module.
-- This module persists and reloads chat contexts and message artifacts.
-- Keep this file-level DOX profile synchronized with `persist_chat.py` because this directory is intentionally flat.
+- Own persisted chat/context serialization, loading, and destructive chat/message-file cleanup.
+- Keep every context-derived filesystem path confined to the canonical chat store.
 
 ## Ownership
 
-- `persist_chat.py` owns the runtime implementation.
-- `persist_chat.py.dox.md` owns durable notes about responsibilities, contracts, side effects, and verification for that implementation.
-- Top-level functions:
-- `_fallback_datetime_iso() -> str`
-- `_parse_persisted_datetime(value: str | None) -> datetime`
-- `get_chat_folder_path(ctxid: str)`: Get the folder path for any context (chat or task).
-- `get_chat_msg_files_folder(ctxid: str)`
-- `save_tmp_chat(context: AgentContext)`: Save context to the chats folder
-- `save_tmp_chats()`: Save all contexts to the chats folder
-- `load_tmp_chats()`: Load all contexts from the chats folder
-- `_get_chat_file_path(ctxid: str)`
-- `_convert_v080_chats()`
-- `load_json_chats(jsons: list[str])`: Load contexts from JSON strings
-- `export_json_chat(context: AgentContext)`: Export context as JSON string
-- `remove_chat(ctxid)`: Remove a chat or task context
-- `remove_msg_files(ctxid)`: Remove all message files for a chat or task context
-- `mark_chat_saved(context: AgentContext) -> None`
-- `saved_chat_ids() -> set[str]`
-- `_serialize_context(context: AgentContext)`
-- `_serialize_agent(agent: Agent)`
-- `_serialize_log(log: Log)`
-- `_deserialize_context(data)`
-- `_deserialize_agent_config(agent_data: dict[str, Any], fallback_config: AgentConfig) -> AgentConfig`
-- `_deserialize_agents(agents: list[dict[str, Any]], config: AgentConfig, context: AgentContext) -> Agent`
-- `_deserialize_log(data: dict[str, Any]) -> 'Log'`
-- `_safe_json_serialize(obj, **kwargs)`
-- Notable constants/configuration names: `CHATS_FOLDER`, `LOG_SIZE`, `CHAT_FILE_NAME`, `SAVED_CHAT_CONTEXT_DATA_KEY`.
+- `CHATS_FOLDER` is the canonical persisted-chat root.
+- `_chat_path(ctxid, *parts)` owns defensive path construction and resolved containment.
+- `helpers.context_utils.validate_context_id` owns canonical opaque context-ID syntax.
+- `get_chat_folder_path`, `get_chat_msg_files_folder`, and `_get_chat_file_path` must route through `_chat_path`.
+- `save_tmp_chat`, `load_tmp_chats`, `remove_chat`, and `remove_msg_files` own persistence lifecycle operations.
 
 ## Runtime Contracts
 
-- Helper modules own reusable framework APIs and must preserve public callers unless all callers, tests, and docs are updated together.
-- Update this file whenever public functions, classes, persistence behavior, path/security assumptions, side effects, or cross-module contracts change.
-- Observed side-effect areas: filesystem reads, filesystem writes, filesystem deletion, settings/state persistence, scheduler state.
-- Imported dependency areas include: `agent`, `collections`, `datetime`, `helpers`, `helpers.localization`, `helpers.log`, `initialize`, `json`, `typing`, `uuid`.
-- Serialized chats store `agent_profile` both at the context level for the main chat and on each serialized agent so subordinate profiles survive server restart.
-- Deserialization must rebuild each agent with its serialized profile when present, falling back to the context profile for older chat files.
-- Chat loading skips directories that do not contain `chat.json`; malformed existing chat files still report load errors.
-- Chat saves write and fsync a same-directory temporary file, atomically replace `chat.json`, and fsync the directory so an interrupted save cannot truncate the previous chat.
-- Contexts are marked with private `SAVED_CHAT_CONTEXT_DATA_KEY` only after a successful save or load from disk so snapshot code can detect deleted chat files without hiding fresh unsaved chats.
-- Chat and message-file removal reject empty or whitespace-only context IDs before provider or filesystem deletion begins.
-
-## Key Concepts
-
-- Important called helpers/classes observed in the source: `datetime.fromtimestamp.isoformat`, `datetime.fromisoformat`, `files.get_abs_path`, `_get_chat_file_path`, `files.make_dirs`, `_serialize_context`, `_safe_json_serialize`, `files.write_file`, `_convert_v080_chats`, `files.list_files`, `get_chat_folder_path`, `files.delete_dir`, `get_chat_msg_files_folder`, `agent.history.serialize`, `initialize_agent`, `_deserialize_log`, `AgentContext`, `_deserialize_agent_config`, `_deserialize_agents`, `Log`, `log.set_initial_progress`.
-- Keep request/response, tool, or helper semantics documented here at the same time as source changes.
+- Context IDs are identifiers, never path components supplied without validation.
+- Every persistence path validates the context ID and independently proves `Path.resolve()` remains beneath the resolved `usr/chats` root.
+- Invalid IDs fail before read/write/delete provider or filesystem side effects.
+- Message-file paths inherit the same containment contract as chat JSON paths.
+- Unsafe legacy chat folder/file names are reported and skipped; they are never resolved or deleted as filesystem paths.
+- Persisted `chat.json` IDs are validated before constructing `AgentContext` objects. Unsafe legacy records fail that individual load without preventing other valid chats from loading.
+- When present, a persisted `chat.json` ID must match its containing chat folder so loading cannot detach context identity from its storage path.
+- `saved_chat_ids()` excludes/report unsafe legacy directory names instead of publishing them as live context identity.
+- Serialized chats store `agent_profile` both at context level and per serialized agent so subordinate profiles survive restart.
+- Chat saves write/fsync a same-directory temporary file, atomically replace `chat.json`, and fsync the directory.
+- Contexts are marked with `SAVED_CHAT_CONTEXT_DATA_KEY` only after successful save/load.
 
 ## Work Guidance
 
-- Preserve public helper APIs used by core code and plugins unless every caller is updated.
-- Keep path, auth, secret, persistence, network, and subprocess behavior explicit and bounded.
-- Prefer adding cohesive helper functions here only when behavior is reused across modules.
+- Do not weaken `_chat_path` containment because upstream/API boundaries also validate IDs; persistence must remain independently safe.
+- New chat-owned files/directories must use `_chat_path` rather than string joining context IDs into paths.
+- Keep unsafe-legacy handling non-destructive. Migration/renaming policy may evolve separately, but unsafe names must never be acted on as paths.
+- Preserve provider-response cleanup semantics unless changing the separate provider-cleanup lifecycle.
 
 ## Verification
 
-- Run targeted tests for changed helper behavior; run security regressions for auth, filesystem, WebSocket, tunnel, upload, or secret-handling helpers.
-- Related tests observed by source search:
-  - `tests/test_api_chat_lifetime.py`
-  - `tests/test_browser_agent_regressions.py`
-  - `tests/test_persist_chat_log_ids.py`
-  - `tests/test_subagent_profiles.py`
-  - `tests/test_tool_action_contracts.py`
+- Run `pytest tests/test_context_id_security.py` for traversal, absolute path, separator, control-character, Unicode, length, and sentinel-deletion coverage.
+- Run nearby persistence regressions including `tests/test_api_chat_lifetime.py`, `tests/test_persist_chat_log_ids.py`, and `tests/test_subagent_profiles.py` after persistence changes.
+- Security coverage must prove direct internal calls to chat/message removal cannot escape the chat root even if an API boundary is bypassed.
 
 ## Child DOX Index
 

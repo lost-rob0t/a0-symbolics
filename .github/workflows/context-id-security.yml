@@ -1,0 +1,49 @@
+name: Context ID Security
+
+on:
+  pull_request:
+    paths:
+      - "helpers/context_utils.py"
+      - "helpers/context_utils.py.dox.md"
+      - "helpers/persist_chat.py"
+      - "helpers/persist_chat.py.dox.md"
+      - "api/chat_create.py"
+      - "api/chat_remove.py"
+      - "tests/test_context_id_security.py"
+      - ".github/workflows/context-id-security.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "helpers/context_utils.py"
+      - "helpers/context_utils.py.dox.md"
+      - "helpers/persist_chat.py"
+      - "helpers/persist_chat.py.dox.md"
+      - "api/chat_create.py"
+      - "api/chat_remove.py"
+      - "tests/test_context_id_security.py"
+      - ".github/workflows/context-id-security.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: context-id-security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install Nix
+        uses: https://github.com/cachix/install-nix-action@v31.11.1
+
+      - name: Context ID security regression
+        run: nix develop --command pytest -q tests/test_context_id_security.py

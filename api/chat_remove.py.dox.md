@@ -2,42 +2,39 @@
 
 ## Purpose
 
-- Own the `chat_remove.py` API endpoint.
-- This module handles chat remove requests.
-- Keep this file-level DOX profile synchronized with `chat_remove.py` because this directory is intentionally flat.
+- Own the chat-removal API endpoint.
+- Keep destructive context and filesystem removal behind validated context identity.
 
 ## Ownership
 
-- `chat_remove.py` owns the runtime implementation.
-- `chat_remove.py.dox.md` owns durable notes about responsibilities, contracts, side effects, and verification for that implementation.
-- Classes:
-- `RemoveChat` (`ApiHandler`)
-  - `async process(self, input: Input, request: Request) -> Output`
+- `RemoveChat.process(...)` coordinates validation, scheduler cancellation, live-context reset/removal, persisted-chat deletion, scheduler reload, and global state invalidation.
 
 ## Runtime Contracts
 
-- HTTP handlers must derive from `helpers.api.ApiHandler`; WebSocket handlers must derive from `helpers.ws.WsHandler`.
-- Update this file whenever request payloads, authentication or CSRF requirements, response shapes, route side effects, or WebSocket event contracts change.
-- `RemoveChat` is an `ApiHandler`.
-- `RemoveChat` defines `process(...)`.
-- Observed side-effect areas: filesystem writes, filesystem deletion, settings/state persistence, scheduler state.
-- Imported dependency areas include: `agent`, `helpers`, `helpers.api`, `helpers.task_scheduler`.
+- HTTP handler derives from `helpers.api.ApiHandler` and preserves the existing authenticated/CSRF route policy supplied by the framework.
+- `input["context"]` is caller-controlled and must pass `helpers.context_utils.validate_context_id` before scheduler, registry, provider-cleanup, or filesystem side effects.
+- Invalid context IDs return HTTP 400 before any destructive action.
+- Persistence remains responsible for its own independent chat-root containment checks; endpoint validation is defense in depth.
+- Successful removal preserves the existing response shape: `{ "message": "Context removed." }`.
 
-## Key Concepts
+## Side Effects
 
-- Important called helpers/classes observed in the source: `scheduler.cancel_tasks_by_context`, `AgentContext.use`, `AgentContext.remove`, `persist_chat.remove_chat`, `scheduler.get_tasks_by_context_id`, `mark_dirty_all`, `context.reset`, `scheduler.reload`, `scheduler.remove_task_by_uuid`.
-- Keep request/response, tool, or helper semantics documented here at the same time as source changes.
+- Cancels scheduler work for the context.
+- Resets/removes a live `AgentContext` when present.
+- Deletes persisted chat state through `persist_chat.remove_chat`.
+- Reloads/removes scheduler tasks and marks global state dirty.
 
 ## Work Guidance
 
-- Preserve authentication, CSRF, loopback, and API-key checks unless the endpoint contract explicitly changes.
-- Update frontend callers, plugin callers, and tests together when payload shape changes.
-- Use `helpers.api.Response` for non-JSON responses, files, redirects, or status-specific replies.
+- Validate destructive identifiers before the first mutation.
+- Keep persistence/filesystem policy in shared helpers rather than duplicating path construction here.
+- Preserve authentication, CSRF, and scheduler semantics when changing removal behavior.
 
 ## Verification
 
-- Run endpoint-specific or API/WebSocket tests for changed behavior; smoke-test browser callers when no focused test exists.
-- No direct test reference was found by name search; choose the nearest behavioral test or perform a focused smoke check.
+- Run `pytest tests/test_context_id_security.py`.
+- Verify malformed context IDs return 400 without reaching scheduler/persistence deletion.
+- Verify direct internal persistence removal still rejects traversal and symlink aliases.
 
 ## Child DOX Index
 
