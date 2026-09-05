@@ -105,3 +105,4 @@ Direct child DOX files:
 | [_whatsapp_integration/AGENTS.md](_whatsapp_integration/AGENTS.md) | WhatsApp Baileys bridge integration. |
 | [_whats_new/AGENTS.md](_whats_new/AGENTS.md) | Version-gated What's New showcase modal, card list, and startup trigger. |
 | [_whisper_stt/AGENTS.md](_whisper_stt/AGENTS.md) | Whisper speech-to-text integration. |
+| [_zara_bridge/AGENTS.md](_zara_bridge/AGENTS.md) | Disabled-by-default delegation to an existing Zara daemon through Zara's client boundary. |

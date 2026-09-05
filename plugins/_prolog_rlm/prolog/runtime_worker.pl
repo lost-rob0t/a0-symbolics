@@ -101,10 +101,19 @@ dispatch(complete, Arguments, Outcome) :-
     !,
     required_text(Arguments, query, Query),
     optional_text(Arguments, context, "", Context),
-    runtime_options(Arguments, Options),
+    runtime_options(Arguments, Options0),
+    context_bytes_option(Arguments, Options0, Options),
     rlm:rlm_completion(Query, text(Context), Options, Outcome).
 dispatch(Action, _, _) :-
     throw(runtime_request_error(unsupported_action(Action))).
+
+context_bytes_option(Arguments, Options0, [context_bytes(Bytes)|Options0]) :-
+    get_dict(context_bytes, Arguments, Bytes0),
+    integer(Bytes0),
+    Bytes0 > 0,
+    !,
+    Bytes = Bytes0.
+context_bytes_option(_, Options, Options).
 
 pack_manifest(Declarations, Category, Manifest) :-
     atomic_list_concat([agent_zero, Category], '_', Pack),
@@ -186,6 +195,13 @@ request_id(Request, RequestId) :-
     ; RequestId = ""
     ).
 
+% Runtime request rejections are plain terms, not SWI message terms;
+% message_to_string/2 would render them as "Unknown message: ...". Report
+% the reason directly so host callers see the actual contract violation.
+request_error(RequestId, runtime_request_error(Reason)) :- !,
+    format(string(Message), "runtime_request_error: ~w", [Reason]),
+    term_string(runtime_request_error(Reason), Detail, [quoted(true), numbervars(true)]),
+    write_reply(_{ok:false, request_id:RequestId, error:Message, detail:Detail}).
 request_error(RequestId, Error) :-
     message_to_string(Error, Message),
     term_string(Error, Detail, [quoted(true), numbervars(true)]),
