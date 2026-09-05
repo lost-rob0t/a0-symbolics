@@ -9,9 +9,13 @@ cancellation, tracing, usage, and structured outcomes.
 
 The agent-facing `prolog_rlm` tool exposes only a fixed operation catalog. It
 never accepts arbitrary Prolog, `call/1`, callable terms, credentials, shell
-commands, or ambient filesystem authority. `direct` and `complete` use the
-Prolog-RLM production OpenRouter provider and inherit credentials only from the
-host process environment. Results and errors never include the API key.
+commands, or ambient filesystem authority. `direct` and `complete` compile the
+live Agent Zero context through the Prolog context compiler first and use the
+Prolog-RLM production OpenRouter provider; `direct` runs the bounded
+provider-native direct agent loop with recursion enabled, and `complete` merges
+the compiled projection with the caller's explicit context. Both inherit
+credentials only from the host process environment. Results and errors never
+include the API key.
 
 `validate_tools` sends inert declarations for the tools Agent Zero has already
 enabled. Prolog validates and groups them as external packs. Visibility,

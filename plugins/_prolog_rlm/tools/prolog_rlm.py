@@ -5,11 +5,29 @@ from typing import Any
 
 from helpers import plugins
 from helpers.tool import Response, Tool
+from plugins._prolog_context_compiler.helpers.bridge import compiler_enabled
 from plugins._prolog_context_compiler.helpers.catalog import build_compile_request
-from plugins._prolog_rlm.helpers.harness import RuntimeFailure, shared_harness
+from plugins._prolog_rlm.helpers.harness import PrologRLM, RuntimeFailure, shared_harness
 
 
 PLUGIN_NAME = "_prolog_rlm"
+
+
+async def compiled_context(agent: Any, harness: PrologRLM) -> str:
+    """Compile the live Agent Zero context through the Prolog compiler.
+
+    Returns an empty string when the context compiler is not enabled; a
+    rejected context is an explicit runtime failure, never a silent skip.
+    """
+    config = plugins.get_plugin_config(
+        "_prolog_context_compiler", agent=agent
+    ) or {}
+    if not compiler_enabled(config=config):
+        return ""
+    request = build_compile_request(agent, [], agent.loop_data, config)
+    result = await harness.compile(request)
+    text = result.payload.get("text") if isinstance(result.payload, dict) else None
+    return str(text or "")
 
 
 class PrologRLM(Tool):
@@ -67,7 +85,17 @@ class PrologRLM(Tool):
             )
 
         try:
-            result = await shared_harness(config).call(action, arguments)
+            harness = shared_harness(config)
+            if action in {"direct", "complete"}:
+                projection = await compiled_context(self.agent, harness)
+                if action == "direct":
+                    arguments["context"] = projection
+                else:
+                    explicit = str(arguments.get("context") or "")
+                    arguments["context"] = "\n".join(
+                        part for part in (projection, explicit) if part
+                    )
+            result = await harness.call(action, arguments)
         except RuntimeFailure as exc:
             message = str(exc)
             if exc.detail:
