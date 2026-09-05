@@ -36,16 +36,17 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Checkout Prolog-RLM skill-graph candidate
-        uses: actions/checkout@v5
-        with:
-          repository: lost-rob0t/prolog-rlm
-          ref: ${{ env.PROLOG_RLM_CANDIDATE }}
-          path: .ci/prolog-rlm
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .ci/prolog-rlm
+          git init --quiet .ci/prolog-rlm
+          git -C .ci/prolog-rlm remote add origin https://github.com/lost-rob0t/prolog-rlm
+          git -C .ci/prolog-rlm fetch --quiet --no-tags --depth 1 origin "${PROLOG_RLM_CANDIDATE}"
+          git -C .ci/prolog-rlm checkout --quiet --detach FETCH_HEAD
 
       - name: Install Nix
         uses: https://github.com/cachix/install-nix-action@v31.11.1
-        with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Resolve exact future Prolog-RLM pin
         shell: bash
