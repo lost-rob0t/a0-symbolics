@@ -32,6 +32,7 @@
 - The utility-message preference controls both individual utility steps and utility-only process-group chrome so hidden utility runs cannot leave empty headers in the transcript.
 - Chat deletion removes the sidebar row optimistically in the same render batch as fallback selection. Keep successful local deletion tombstones for the page session so out-of-order poll or push snapshots cannot reinsert rows; restore the row and clear its tombstone if the delete request fails.
 - Chat selection must synchronize the sidebar store even when the low-level context has already switched to the requested ID.
+- The chat list owns a client-side search box (shown when more than five chats exist or while searching) that filters chat names and project labels case-insensitively; during search, matching children stay reachable and their parents remain visible.
 
 ## Work Guidance
 
