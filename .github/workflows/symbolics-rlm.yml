@@ -50,6 +50,7 @@ jobs:
 
       - name: Export regenerated lock evidence
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: regenerated-flake-lock
           path: flake.lock
@@ -129,6 +130,7 @@ jobs:
       - name: Export focused pytest evidence
         if: always()
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: symbolics-focused-pytest-${{ github.event.pull_request.head.sha || github.sha }}
           path: ${{ runner.temp }}/symbolics-focused-pytest.log
@@ -157,6 +159,7 @@ jobs:
       - name: Export Nix integration evidence
         if: always()
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: symbolics-nix-flake-check-${{ github.event.pull_request.head.sha || github.sha }}
           path: ${{ runner.temp }}/symbolics-nix-flake-check.log
