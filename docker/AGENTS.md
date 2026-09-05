@@ -19,6 +19,7 @@
 - Do not bake secrets, local `.env` values, or user data into images.
 - Keep compose mounts aligned with `usr/` and other runtime-state expectations.
 - The symbolics compose path persists only `/nix` and `/a0/usr`; application code remains image-owned so updates cannot be masked by a stale persistent `/a0` tree.
+- `initialize.sh` restores persisted home entries from `A0_PERSISTENT_HOME_DIR` (default `/a0/usr/home`) into `$A0_HOME_DIR` after Home Manager activation; non-empty image-/Home-Manager-owned targets win.
 - Image changes that affect GitHub publishing must stay synchronized with `.github/workflows/docker-publish.yml`.
 
 ## Work Guidance
