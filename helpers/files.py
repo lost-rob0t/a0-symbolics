@@ -616,12 +616,15 @@ def deabsolute_path(path: str):
 
 
 def fix_dev_path(path: str):
-    "On dev environment, convert /a0/... paths to local absolute paths"
-    from helpers.runtime import is_development
+    "Convert /a0/... display paths to local absolute paths outside docker"
+    from helpers.runtime import is_dockerized
 
-    if is_development():
-        if path.startswith("/a0/"):
-            path = path.replace("/a0/", "")
+    if is_dockerized():
+        return path
+    if path == "/a0":
+        path = ""
+    elif path.startswith("/a0/"):
+        path = path[len("/a0/") :]
     return get_abs_path(path)
 
 
