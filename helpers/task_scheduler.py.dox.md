@@ -12,6 +12,7 @@
 - `task_scheduler.py.dox.md` owns durable notes about responsibilities, contracts, side effects, and verification for that implementation.
 - Classes:
 - `TaskState` (`str`, `Enum`)
+- `TaskRunStatus` (`str`, `Enum`)
 - `TaskType` (`str`, `Enum`)
 - `TaskSchedule` (`BaseModel`)
   - `to_crontab(self) -> str`
@@ -66,8 +67,12 @@
   - `get_tasks_by_context_id(self, context_id: str, only_running: bool=...) -> list[Union[ScheduledTask, AdHocTask, PlannedTask]]`
   - `async add_task(self, task: Union[ScheduledTask, AdHocTask, PlannedTask]) -> 'TaskScheduler'`
   - `async remove_task_by_uuid(self, task_uuid: str) -> 'TaskScheduler'`
+  - `get_task_by_run_id(self, run_id: str) -> ScheduledTask | AdHocTask | PlannedTask | None`
 - Top-level functions:
 - `normalize_schedule_timezone(timezone_name: str | None) -> str`
+- `bound_previous_run_output(output: str, limit_bytes: int=...) -> tuple[str, str, int, bool]`
+- `record_scheduler_terminal_response(agent: Agent, tool_name: str, response: Any) -> None`
+- `build_task_prompt(task: BaseTask, task_context: str | None=...) -> str`
 - `_now() -> datetime`
 - `_localize_task_datetime(dt: datetime) -> datetime`
 - `serialize_datetime(dt: Optional[datetime]) -> Optional[str]`: Serialize a datetime object to ISO format string in the user's timezone.
@@ -80,10 +85,16 @@
 - `serialize_tasks(tasks: list[Union[ScheduledTask, AdHocTask, PlannedTask]]) -> list[Dict[str, Any]]`: Serialize a list of tasks to a list of dictionaries.
 - `deserialize_task(task_data: Dict[str, Any], task_class: Optional[Type[T]]=...) -> T`: Deserialize dictionary into appropriate task object with validation.
 - Notable constants/configuration names: `SCHEDULER_FOLDER`, `LOCAL_TIMEZONE_ALIASES`, `T`.
+- Notable scheduler-run constants include `PREVIOUS_RUN_OUTPUT_MAX_BYTES`, `SCHEDULER_RUN_CONTEXT_KEY`, and `SCHEDULER_TERMINAL_RESULT_KEY`.
 
 ## Runtime Contracts
 
 - Helper modules own reusable framework APIs and must preserve public callers unless all callers, tests, and docs are updated together.
+- Durable task identity (`uuid` and legacy `context_id`) is separate from per-occurrence `current_run_id`/`last_run_id`; every occurrence creates a new persisted `AgentContextType.TASK` context and never reloads an earlier run's agent/history/provider state.
+- Run contexts persist `scheduler_run` metadata linking the run back to its durable task. Existing task chats remain valid historical chats during migration.
+- In-process start registration is compare-and-set by durable task UUID, preventing a concurrent manual start from replacing the cancellable handle for the active occurrence; persisted result promotion is fenced by the matching `current_run_id`.
+- A successful handoff is promoted only when the post-tool hook attests a non-empty `response` tool completion with `break_loop=true` for the matching run. Failed, cancelled, timed-out, empty, raw-tool, and stale completions cannot replace `previous_run_output`.
+- Promoted output is capped at 32 KiB of UTF-8. The task also persists the full-output SHA-256, original byte count, truncation flag, and full run-context ID.
 - Update this file whenever public functions, classes, persistence behavior, path/security assumptions, side effects, or cross-module contracts change.
 - Observed side-effect areas: filesystem reads, filesystem writes, filesystem deletion, network calls, settings/state persistence, secret handling, scheduler state.
 - Imported dependency areas include: `agent`, `asyncio`, `crontab`, `datetime`, `enum`, `helpers`, `helpers.defer`, `helpers.files`, `helpers.localization`, `helpers.persist_chat`, `helpers.print_style`, `initialize`, `nest_asyncio`, `os`, `os.path`, `pydantic`.
