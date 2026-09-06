@@ -30,6 +30,13 @@ on:
 permissions:
   contents: read
 
+# Sandboxed builds keep each derivation's HOME isolated; without this the
+# unsandboxed rust/cargo bootstrap chain leaves /homeless-shelter behind and
+# later builds fail their purity check on the root single-user CI runner.
+env:
+  NIX_CONFIG: |-
+    sandbox = true
+
 concurrency:
   group: heavy-ci-${{ github.repository }}
   cancel-in-progress: false
