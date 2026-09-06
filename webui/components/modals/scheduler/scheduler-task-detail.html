@@ -58,6 +58,34 @@
                     <div class="scheduler-details-value"
                          x-text="$store.schedulerStore.selectedTaskForDetail ? $store.schedulerStore.formatDate($store.schedulerStore.selectedTaskForDetail.last_run) : ''"></div>
 
+                    <div class="scheduler-details-label">Durable Task ID:</div>
+                    <div class="scheduler-details-value"
+                         x-text="$store.schedulerStore.selectedTaskForDetail ? $store.schedulerStore.selectedTaskForDetail.uuid : ''"></div>
+
+                    <div class="scheduler-details-label">Current Run ID:</div>
+                    <div class="scheduler-details-value"
+                         x-text="$store.schedulerStore.selectedTaskForDetail?.current_run_id || 'Not running'"></div>
+
+                    <div class="scheduler-details-label">Last Run ID:</div>
+                    <div class="scheduler-details-value"
+                         x-text="$store.schedulerStore.selectedTaskForDetail?.last_run_id || 'Never run'"></div>
+
+                    <div class="scheduler-details-label">Last Run Status:</div>
+                    <div class="scheduler-details-value"
+                         x-text="$store.schedulerStore.selectedTaskForDetail?.last_run_status || 'never'"></div>
+
+                    <div class="scheduler-details-label">Last Successful Run:</div>
+                    <div class="scheduler-details-value"
+                         x-text="$store.schedulerStore.selectedTaskForDetail?.previous_run_id || 'No successful run yet'"></div>
+
+                    <div class="scheduler-details-label">Last Successful Output:</div>
+                    <div class="scheduler-details-value"
+                         x-text="$store.schedulerStore.selectedTaskForDetail?.previous_run_output || 'No successful output yet'"></div>
+
+                    <div class="scheduler-details-label">Output Handoff:</div>
+                    <div class="scheduler-details-value"
+                         x-text="$store.schedulerStore.selectedTaskForDetail?.previous_run_output_sha256 ? `${$store.schedulerStore.selectedTaskForDetail.previous_run_output_bytes} bytes · sha256 ${$store.schedulerStore.selectedTaskForDetail.previous_run_output_sha256}${$store.schedulerStore.selectedTaskForDetail.previous_run_output_truncated ? ' · truncated' : ''}` : 'No successful output yet'"></div>
+
                     <div class="scheduler-details-label"
                          x-show="$store.schedulerStore.selectedTaskForDetail && $store.schedulerStore.selectedTaskForDetail.type === 'scheduled'">
                         Schedule:</div>
@@ -109,7 +137,7 @@
                         </div>
                     </div>
 
-                    <div class="scheduler-details-label">Last Result:</div>
+                    <div class="scheduler-details-label">Latest Result:</div>
                     <div class="scheduler-details-value"
                          x-text="$store.schedulerStore.selectedTaskForDetail && $store.schedulerStore.selectedTaskForDetail.last_result ? $store.schedulerStore.selectedTaskForDetail.last_result : 'No results yet'"></div>
 
@@ -174,4 +202,3 @@
 
 </body>
 </html>
-

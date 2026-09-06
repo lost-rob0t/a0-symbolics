@@ -20,6 +20,7 @@
 - Chat tree expand/collapse controls use a parent-only leading slot and must not consume normal chat row text margin.
 - A restored selected parent chat with children auto-expands once during context hydration unless the user has already toggled it.
 - The Tasks list is reserved for scheduler-backed task contexts and must not be used for chat-bound parallel children.
+- Scheduler task rows select/reset the per-occurrence run context by `id`, while detail/delete actions target the distinct durable task `uuid`.
 - Running parent and child chats share the chat-list working-bubble animation; keep it scoped away from task and connection-status indicators.
 - Chat and task lists reclaim the same part of the sidebar's left content inset so their project bubbles align, while their section headers retain the standard sidebar inset.
 - Chat-row action buttons consume layout width only while a pointer row is hovered or while that row is selected on a touch device.
@@ -32,6 +33,7 @@
 - The utility-message preference controls both individual utility steps and utility-only process-group chrome so hidden utility runs cannot leave empty headers in the transcript.
 - Chat deletion removes the sidebar row optimistically in the same render batch as fallback selection. Keep successful local deletion tombstones for the page session so out-of-order poll or push snapshots cannot reinsert rows; restore the row and clear its tombstone if the delete request fails.
 - Chat selection must synchronize the sidebar store even when the low-level context has already switched to the requested ID.
+- The chat list owns a client-side search box (shown when more than five chats exist or while searching) that filters chat names and project labels case-insensitively; during search, matching children stay reachable and their parents remain visible.
 
 ## Work Guidance
 

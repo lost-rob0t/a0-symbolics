@@ -22,6 +22,17 @@
 
 
 
+        <div class="chats-search" x-show="$store.chats.contexts.length > 5 || $store.chats.searchActive()">
+          <x-icon aria-hidden="true" name="search"></x-icon>
+          <input type="search" x-model.debounce.150ms="$store.chats.search" placeholder="Search chats" />
+          <button type="button" class="chats-search-clear"
+            x-show="$store.chats.searchActive()"
+            @click="$store.chats.clearSearch()"
+            title="Clear search">
+            <x-icon aria-hidden="true" name="close"></x-icon>
+          </button>
+        </div>
+
         <ul class="config-list chats-config-list no-scrollbar" x-show="$store.chats.topLevelContexts().length > 0">
           <template x-for="(context, contextIndex) in $store.chats.topLevelContexts()" :key="context.id">
             <li class="chat-tree-item"
@@ -53,8 +64,8 @@
                   <x-icon name="more_vert"></x-icon>
                 </button>
               </div>
-              <ul class="chat-child-list" x-show="$store.chats.isExpanded(context.id) && $store.chats.hasChildren(context.id)">
-                <template x-for="(child, childIndex) in $store.chats.childContexts(context.id)" :key="child.id">
+              <ul class="chat-child-list" x-show="($store.chats.isExpanded(context.id) || $store.chats.searchActive()) && $store.chats.hasChildren(context.id)">
+                <template x-for="(child, childIndex) in $store.chats.visibleChildContexts(context.id)" :key="child.id">
                   <li :class="{ 'sidebar-list-divider': $store.sidebar.hasRowDividerBefore('chat', child, childIndex, $store.chats.childContexts(context.id)) }">
                     <div :class="{'chat-container': true, 'chat-child-container': true, 'chat-selected': child.id === $store.chats.selected}"
                       @click="$store.chats.selectChat(child.id)">
@@ -103,6 +114,63 @@
 
     .chats-list-container .section-header {
       margin: 0;
+    }
+
+    /* Chats search box */
+    .chats-search {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      min-height: 2rem;
+      flex-shrink: 0;
+      padding: 0.2rem 0.45rem;
+      margin-bottom: var(--spacing-xs);
+      border: 1px solid var(--color-border);
+      border-radius: 7px;
+      background: var(--color-input);
+      color: var(--color-text-muted);
+    }
+
+    .chats-search .material-symbols-outlined,
+    .chats-search x-icon {
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .chats-search input {
+      width: 100%;
+      min-width: 0;
+      border: 0;
+      background: transparent;
+      color: var(--color-text);
+      font-size: var(--font-size-small);
+      outline: none;
+      padding: 0.15rem 0;
+    }
+
+    .chats-search input::-webkit-search-cancel-button,
+    .chats-search input::-webkit-search-decoration {
+      -webkit-appearance: none;
+      appearance: none;
+      display: none;
+    }
+
+    .chats-search-clear {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.35rem;
+      height: 1.35rem;
+      flex-shrink: 0;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--color-text-muted);
+      cursor: pointer;
+    }
+
+    .chats-search-clear:hover {
+      color: var(--color-text);
     }
 
     /* Chats list container and items */

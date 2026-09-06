@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Find and optionally close inactive issues/PRs
-        uses: actions/github-script@v7
+        uses: https://github.com/actions/github-script@v7
         env:
           INACTIVE_DAYS: ${{ github.event_name == 'workflow_dispatch' && inputs.inactive_days || env.DEFAULT_INACTIVE_DAYS }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || env.DEFAULT_DRY_RUN }}

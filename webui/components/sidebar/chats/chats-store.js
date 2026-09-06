@@ -22,6 +22,7 @@ const model = {
   loggedIn: false,
   expandedParents: {},
   deletedContextIds: {},
+  search: "",
 
   // for convenience
   getSelectedChatId() {
@@ -83,11 +84,36 @@ const model = {
     }
   },
 
-  topLevelContexts() {
-    return sidebarStore.sortRows(
-      "chat",
-      this.contexts.filter((ctx) => !ctx?.parent_context_id),
+  _matchesSearch(ctx) {
+    const q = (this.search || "").trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (this.displayName(ctx) || "").toLowerCase().includes(q) ||
+      (ctx.project?.title || ctx.project?.name || "").toLowerCase().includes(q)
     );
+  },
+
+  // Case-insensitive client-side search across chat names and project labels
+  filteredContexts(list) {
+    return list.filter((ctx) => this._matchesSearch(ctx));
+  },
+
+  topLevelContexts() {
+    const top = this.contexts.filter((ctx) => !ctx?.parent_context_id);
+    const q = (this.search || "").trim().toLowerCase();
+    if (!q) return sidebarStore.sortRows("chat", top);
+    // During search, keep parents whose children match even if the parent
+    // itself does not, so matching children stay reachable in the tree.
+    const visible = new Set(this.filteredContexts(top));
+    const parentsOfMatches = top.filter(
+      (ctx) =>
+        !visible.has(ctx) &&
+        this.childContexts(ctx.id).some((child) => this._matchesSearch(child)),
+    );
+    return sidebarStore.sortRows("chat", [
+      ...this.filteredContexts(top),
+      ...parentsOfMatches,
+    ]);
   },
 
   childContexts(parentId) {
@@ -95,6 +121,18 @@ const model = {
       "chat",
       this.contexts.filter((ctx) => ctx?.parent_context_id === parentId),
     );
+  },
+
+  visibleChildContexts(parentId) {
+    return this.filteredContexts(this.childContexts(parentId));
+  },
+
+  searchActive() {
+    return (this.search || "").trim().length > 0;
+  },
+
+  clearSearch() {
+    this.search = "";
   },
 
   hasChildren(parentId) {

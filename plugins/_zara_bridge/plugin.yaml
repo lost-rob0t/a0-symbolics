@@ -1,0 +1,9 @@
+name: _zara_bridge
+title: Zara Bridge
+description: Delegate selected Agent Zero turns to an existing Zara daemon.
+version: 0.1.0
+settings_sections:
+  - external
+per_project_config: false
+per_agent_config: false
+always_enabled: false

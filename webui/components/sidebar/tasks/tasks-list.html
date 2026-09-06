@@ -41,7 +41,7 @@
                               x-text="task.state || 'idle'"></span>
                         <div class="task-actions">
                           <button class="btn-icon-action"
-                                  @click.stop="$store.tasks.openDetail(task.id)"
+                                  @click.stop="$store.tasks.openDetail(task.uuid)"
                                   title="View task details">
                             <x-icon name="info"></x-icon>
                           </button>
@@ -49,7 +49,7 @@
                                   @click.stop="$confirmClick($event, () => $store.tasks.reset(task.id))">
                             <x-icon name="delete_sweep"></x-icon>
                           </button>
-                          <button class="btn-icon-action" title="Delete task" @click.stop="$confirmClick($event, () => $store.tasks.deleteTask(task.id))">
+                          <button class="btn-icon-action" title="Delete task" @click.stop="$confirmClick($event, () => $store.tasks.deleteTask(task.uuid))">
                             <x-icon name="close"></x-icon>
                           </button>
                           <button type="button" class="btn-icon-action" title="More task actions"
