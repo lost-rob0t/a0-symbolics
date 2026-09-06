@@ -95,14 +95,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$GITHUB_WORKSPACE/usr" "$GITHUB_WORKSPACE/tmp"
-          if [ -e /a0 ] || [ -L /a0 ]; then
-            test "$(readlink -f /a0)" = "$GITHUB_WORKSPACE"
-          else
-            sudo ln -s "$GITHUB_WORKSPACE" /a0
-          fi
           test -w "$GITHUB_WORKSPACE/usr"
           test -w "$GITHUB_WORKSPACE/tmp"
-          test "$(readlink -f /a0)" = "$GITHUB_WORKSPACE"
+          # /a0 is a display-path abstraction resolved against the runtime base
+          # dir (helpers/files.get_base_dir); it is only required on disk for
+          # components that bypass that abstraction. Best-effort on executors
+          # without root (host runner); authoritative on docker (root).
+          if [ -e /a0 ] || [ -L /a0 ]; then
+            test "$(readlink -f /a0)" = "$GITHUB_WORKSPACE"
+          elif sudo ln -s "$GITHUB_WORKSPACE" /a0 2>/dev/null; then
+            test "$(readlink -f /a0)" = "$GITHUB_WORKSPACE"
+          else
+            echo "::warning::no root on this executor; skipping /a0 symlink (display paths resolve via helpers/files.get_base_dir)"
+          fi
 
       - name: Focused runtime-mode and bridge tests
         shell: bash
