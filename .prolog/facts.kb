@@ -1,0 +1,5 @@
+% Ground facts and machine observations for this worktree.
+task('rlm-context-projection').
+repo_state('5116eb4d81f3ee49cd6d288db2f78e13fbbd7403', 'ccdcb48cdb3d34aced22f1cf47ada282f73ec92eac471c3dfb1bf2ea1d642877').
+research_required(true).
+brave_search('be0afc7824340989015ce13fdea386fb720e7204dacf20696fefb8fb2e3f5534', '489ea74a14b91dc7785581e88d827920bfc05b1380ac4dc1e46e6ee57598a776', '2026-09-06T11:14:24Z', '5116eb4d81f3ee49cd6d288db2f78e13fbbd7403', 'ccdcb48cdb3d34aced22f1cf47ada282f73ec92eac471c3dfb1bf2ea1d642877').

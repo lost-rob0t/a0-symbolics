@@ -1,6 +1,12 @@
 { pkgs }:
 let
-  ps = pkgs.python312Packages;
+  # nixpkgs' mcp runs its upstream test suite during build; its permission
+  # tests assume an unprivileged builder and fail under the root single-user
+  # nix used by the docker CI runner. overrideScope so packages that depend
+  # on mcp (fastmcp, litellm) also build against the check-free derivation.
+  ps = pkgs.python312Packages.overrideScope (pfinal: pprev: {
+    mcp = pprev.mcp.overridePythonAttrs (_: { doCheck = false; });
+  });
   patchright = ps.buildPythonPackage {
     pname = "patchright";
     version = "1.61.2";

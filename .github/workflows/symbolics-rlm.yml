@@ -5,6 +5,7 @@ on:
     paths:
       - "flake.nix"
       - "flake.lock"
+      - "nix/**"
       - "plugins/_prolog_rlm/**"
       - ".github/workflows/symbolics-rlm.yml"
   push:
