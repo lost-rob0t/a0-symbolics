@@ -25,9 +25,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: symbolics-rlm-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
-
+  group: heavy-ci-${{ github.repository }}
+  cancel-in-progress: false
 jobs:
   focused:
     runs-on: ubuntu-latest
