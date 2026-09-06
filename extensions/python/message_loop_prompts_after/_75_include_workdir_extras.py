@@ -52,6 +52,11 @@ class IncludeWorkdirExtras(Extension):
 
             folder = set["workdir_path"]
             scan_path = files.get_abs_path_development(folder)
+            if not files.is_in_base_dir(scan_path):
+                # The workdir resolves to a /a0 display path but this runtime
+                # cannot provide the display root (e.g. CI without the docker
+                # /a0 mount): scan the in-base workdir instead of failing.
+                scan_path = files.get_abs_path("usr/workdir")
 
             files.create_dir(scan_path)
 

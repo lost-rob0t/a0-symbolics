@@ -8,6 +8,13 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+
+# Serialize Android SDK/gradle jobs; they queue instead of stampeding and
+# overloading a single runner. The nix workflows queue separately (nix-ci
+# lane on the host nix runner).
+concurrency:
+  group: android-ci-${{ github.repository }}
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
