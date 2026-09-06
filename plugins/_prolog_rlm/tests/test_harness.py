@@ -96,18 +96,20 @@ class TestClient:
         client = PrologRLM(transport)
         asyncio.run(client.status())
         asyncio.run(client.demo("graph"))
-        asyncio.run(client.direct("hi", {"max_total_tokens": 512}))
+        asyncio.run(client.direct("hi", budget={"max_total_tokens": 512}))
         asyncio.run(client.complete("q", "ctx"))
+        asyncio.run(client.compile({"message": "m", "units": []}))
         assert [c[0] for c in transport.calls] == [
-            "status", "demo", "direct", "complete"
+            "status", "demo", "direct", "complete", "context_compile"
         ]
         assert transport.calls[1][1] == {"name": "graph"}
         assert transport.calls[2][1] == {
-            "prompt": "hi", "budget": {"max_total_tokens": 512}
+            "prompt": "hi", "budget": {"max_total_tokens": 512}, "context": ""
         }
         assert transport.calls[3][1] == {
             "query": "q", "context": "ctx", "budget": {}
         }
+        assert transport.calls[4][1] == {"request": {"message": "m", "units": []}}
 
 
 class TestWorkerTransport:

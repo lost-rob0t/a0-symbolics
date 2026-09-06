@@ -82,30 +82,46 @@ dispatch(demo, Arguments, Outcome) :-
     ->  rlm:demo(Name, Outcome)
     ;   throw(runtime_request_error(unsupported_demo(Name)))
     ).
-dispatch(context_compile, Arguments, Outcome) :-
+dispatch(context_compile, Arguments, Result) :-
     !,
     required_dict(Arguments, request, CompileRequest),
-    rlm:agent_zero_context_compile(CompileRequest, Outcome).
+    rlm:agent_zero_context_compile(CompileRequest, Outcome),
+    compile_outcome(Outcome, Result).
 dispatch(tool_pack_catalog, Arguments, Catalog) :-
     !,
     required_list(Arguments, declarations, Declarations),
     declaration_categories(Declarations, Categories),
     maplist(pack_manifest(Declarations), Categories, Manifests),
     Catalog = _{categories:Categories, manifests:Manifests}.
-dispatch(direct, Arguments, Outcome) :-
+dispatch(direct, Arguments, Result) :-
     !,
     required_text(Arguments, prompt, Prompt),
+    optional_text(Arguments, context, "", Context),
     runtime_options(Arguments, Options),
-    rlm:llm_query(Prompt, Options, Outcome).
-dispatch(complete, Arguments, Outcome) :-
+    rlm:rlm_direct(Prompt, text(Context), Options, Outcome),
+    runtime_result(Outcome, Result).
+dispatch(complete, Arguments, Result) :-
     !,
     required_text(Arguments, query, Query),
     optional_text(Arguments, context, "", Context),
     runtime_options(Arguments, Options0),
     context_bytes_option(Arguments, Options0, Options),
-    rlm:rlm_completion(Query, text(Context), Options, Outcome).
+    rlm:rlm_completion(Query, text(Context), Options, Outcome),
+    runtime_result(Outcome, Result).
 dispatch(Action, _, _) :-
     throw(runtime_request_error(unsupported_action(Action))).
+
+compile_outcome(ok(Result), Result) :- !.
+compile_outcome(error(Error), _) :-
+    json_safe(Error, Safe),
+    throw(runtime_request_error(context_compile_rejected(Safe))).
+
+% Completion outcomes are ok(...) / error(...) terms; a fault must surface as
+% a failed envelope, never as an ok:true $term-encoded error payload.
+runtime_result(ok(Result), Result) :- !.
+runtime_result(error(Error), _) :-
+    json_safe(Error, Safe),
+    throw(runtime_request_error(runtime_fault(Safe))).
 
 context_bytes_option(Arguments, Options0, [context_bytes(Bytes)|Options0]) :-
     get_dict(context_bytes, Arguments, Bytes0),
