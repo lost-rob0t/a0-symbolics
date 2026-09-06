@@ -54,6 +54,15 @@ const TASK_TYPES = ["scheduled", "adhoc", "planned"];
  * @property {string} [updated_at]
  * @property {string} [last_run]
  * @property {string} [last_result]
+ * @property {string|null} [current_run_id]
+ * @property {string|null} [last_run_id]
+ * @property {string} [last_run_status]
+ * @property {string|null} [previous_run_id]
+ * @property {string|null} [previous_run_output]
+ * @property {string|null} [previous_run_output_sha256]
+ * @property {number|null} [previous_run_output_bytes]
+ * @property {boolean} [previous_run_output_truncated]
+ * @property {number} [previous_run_output_limit_bytes]
  */
 
 /**

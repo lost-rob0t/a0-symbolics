@@ -35,6 +35,7 @@
 - Update this file whenever tool arguments, output shape, `break_loop` behavior, intervention handling, prompt instructions, or side effects change.
 - `SchedulerTool` is a `Tool`.
 - `SchedulerTool` defines `execute(...)`.
+- Scheduler runs always execute in a fresh per-occurrence context, so starting or waiting for a task never aliases or terminates the caller's chat. Deletion cancels the current run context while retaining independently persisted historical run chats.
 - Observed side-effect areas: filesystem writes, filesystem deletion, settings/state persistence, secret handling, scheduler state.
 - Imported dependency areas include: `agent`, `asyncio`, `datetime`, `helpers`, `helpers.localization`, `helpers.projects`, `helpers.task_scheduler`, `helpers.tool`, `json`, `pytz`, `random`, `re`, `typing`.
 
