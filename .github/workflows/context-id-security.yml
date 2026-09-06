@@ -54,4 +54,4 @@ jobs:
         run: nix --version
 
       - name: Context ID security regression
-        run: nix develop --command pytest -q tests/test_context_id_security.py
+        run: nix develop --command python -m pytest -q tests/test_context_id_security.py
