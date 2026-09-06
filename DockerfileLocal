@@ -12,9 +12,21 @@ ENV PATH="/root/.nix-profile/bin:${PATH}"
 COPY ./docker/run/fs/ /
 # Copy current development files to git, they will only be used in "local" branch
 COPY ./ /git/agent-zero
+# The Docker context excludes mutable user state, but preload expects this root.
+RUN mkdir -p /git/agent-zero/usr/plugins
+
+# pre installation steps
+RUN bash /ins/pre_install.sh $BRANCH
+
+# install A0
+RUN bash /ins/install_A0.sh $BRANCH
+
+# install additional software
+RUN bash /ins/install_additional.sh $BRANCH
 
 # Keep the Nix binary image-owned while /nix itself can be a persistent volume.
-# Nix runs daemonless in this container; Home Manager owns user CLI packages.
+# Install it only after the pinned desktop transaction so the rolling package
+# cannot upgrade core libraries before install_additional switches suites.
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nix-bin \
     && mkdir -p /etc/nix /nix/store /nix/var/nix/profiles/per-user/root /nix/var/nix/gcroots/per-user/root \
@@ -25,15 +37,6 @@ RUN apt-get update \
         > /etc/nix/nix.conf \
     && nix-store --init \
     && rm -rf /var/lib/apt/lists/*
-
-# pre installation steps
-RUN bash /ins/pre_install.sh $BRANCH
-
-# install A0
-RUN bash /ins/install_A0.sh $BRANCH
-
-# install additional software
-RUN bash /ins/install_additional.sh $BRANCH
 
 # cleanup repo and install A0 without caching, this speeds up builds
 ARG CACHE_DATE=none

@@ -120,3 +120,29 @@ def test_runtime_bridge_loads_production_external_pack_without_executing_host():
     manifest = catalog["manifests"][0]
     assert manifest["outcome"]["status"] == "loaded"
     assert [schema["name"] for schema in manifest["schemas"]] == ["exec"]
+
+
+@pytest.mark.skipif(
+    shutil.which("swipl") is None or not PROLOG_RLM_AVAILABLE,
+    reason="SWI-Prolog or PROLOG_RLM_TEST_ROOT is unavailable",
+)
+def test_runtime_bridge_reports_request_errors_with_reason_and_detail():
+    """Runtime request rejections must surface the real reason: never the
+    opaque "Unknown message: ..." rendering of message_to_string/2."""
+    from plugins._prolog_rlm.helpers.bridge import PrologRuntimeBridgeError
+
+    bridge = PrologRuntimeBridge(
+        {
+            "prolog_rlm_root": str(PROLOG_RLM_ROOT),
+            "request_timeout_seconds": 3.0,
+        }
+    )
+    try:
+        with pytest.raises(PrologRuntimeBridgeError) as excinfo:
+            bridge.call("complete", {"query": "", "context": ""})
+    finally:
+        bridge.close()
+
+    assert "runtime_request_error" in str(excinfo.value)
+    assert "Unknown message" not in str(excinfo.value)
+    assert "required_text(query)" in excinfo.value.detail

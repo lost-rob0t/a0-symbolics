@@ -1,19 +1,33 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import Any
 
 from helpers import plugins
 from helpers.tool import Response, Tool
+from plugins._prolog_context_compiler.helpers.bridge import compiler_enabled
 from plugins._prolog_context_compiler.helpers.catalog import build_compile_request
-from plugins._prolog_rlm.helpers.bridge import (
-    PrologRuntimeBridgeError,
-    shared_runtime_bridge,
-)
+from plugins._prolog_rlm.helpers.harness import PrologRLM, RuntimeFailure, shared_harness
 
 
 PLUGIN_NAME = "_prolog_rlm"
+
+
+async def compiled_context(agent: Any, harness: PrologRLM) -> str:
+    """Compile the live Agent Zero context through the Prolog compiler.
+
+    Returns an empty string when the context compiler is not enabled; a
+    rejected context is an explicit runtime failure, never a silent skip.
+    """
+    config = plugins.get_plugin_config(
+        "_prolog_context_compiler", agent=agent
+    ) or {}
+    if not compiler_enabled(config=config):
+        return ""
+    request = build_compile_request(agent, [], agent.loop_data, config)
+    result = await harness.compile(request)
+    text = result.payload.get("text") if isinstance(result.payload, dict) else None
+    return str(text or "")
 
 
 class PrologRLM(Tool):
@@ -71,13 +85,24 @@ class PrologRLM(Tool):
             )
 
         try:
-            result = await asyncio.to_thread(
-                shared_runtime_bridge(config).call, action, arguments
-            )
-        except PrologRuntimeBridgeError as exc:
-            return Response(message=f"Prolog-RLM failed: {exc}", break_loop=False)
+            harness = shared_harness(config)
+            if action in {"direct", "complete"}:
+                projection = await compiled_context(self.agent, harness)
+                if action == "direct":
+                    arguments["context"] = projection
+                else:
+                    explicit = str(arguments.get("context") or "")
+                    arguments["context"] = "\n".join(
+                        part for part in (projection, explicit) if part
+                    )
+            result = await harness.call(action, arguments)
+        except RuntimeFailure as exc:
+            message = str(exc)
+            if exc.detail:
+                message = f"{message}: {exc.detail}"
+            return Response(message=f"Prolog-RLM failed: {message}", break_loop=False)
 
-        rendered = json.dumps(result, ensure_ascii=False, sort_keys=True)
+        rendered = json.dumps(result.payload, ensure_ascii=False, sort_keys=True)
         limit = max(1000, int(config.get("max_tool_result_chars", 50_000)))
         if len(rendered) > limit:
             rendered = rendered[:limit] + "…[bounded Prolog-RLM result]"

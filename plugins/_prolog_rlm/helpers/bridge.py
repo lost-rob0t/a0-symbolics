@@ -14,7 +14,9 @@ from plugins._prolog_context_compiler.helpers.transport import (
 
 
 class PrologRuntimeBridgeError(PrologBridgeError):
-    pass
+    def __init__(self, message: str, *, detail: str = "") -> None:
+        super().__init__(message)
+        self.detail = detail
 
 
 class PrologRuntimeBridge(PrologJsonWorker):
@@ -44,11 +46,12 @@ class PrologRuntimeBridge(PrologJsonWorker):
             {"action": str(action or "").strip(), "arguments": arguments or {}}
         )
         if response.get("ok") is not True:
-            detail = response.get("detail")
+            detail = str(response.get("detail") or "")
             message = str(response.get("error") or "Prolog-RLM request failed")
-            if detail:
-                message = f"{message}: {detail}"
-            raise PrologRuntimeBridgeError(message)
+            raise PrologRuntimeBridgeError(
+                f"{message}: {detail}" if detail else message,
+                detail=detail,
+            )
         if "result" not in response:
             raise PrologRuntimeBridgeError("Prolog-RLM response is missing result")
         return response["result"]

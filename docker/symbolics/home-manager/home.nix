@@ -26,7 +26,7 @@
     ripgrep
     rsync
     sbcl
-    swipl
+    swi-prolog
     tmux
     tree
     unzip
