@@ -32,7 +32,7 @@ env:
     sandbox = true
 
 concurrency:
-  group: heavy-ci-${{ github.repository }}
+  group: nix-ci-${{ github.repository }}
   cancel-in-progress: false
 jobs:
   focused:
