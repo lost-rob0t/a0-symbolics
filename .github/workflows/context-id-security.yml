@@ -31,9 +31,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: context-id-security-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
+  group: heavy-ci-${{ github.repository }}
+  cancel-in-progress: false
 jobs:
   regression:
     runs-on: ubuntu-latest
