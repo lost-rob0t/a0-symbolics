@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import json
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -183,3 +184,127 @@ def test_parallel_prompt_encourages_mixed_independent_batches() -> None:
     assert "Do not split by tool type" in prompt
     assert "Never include `document_query`" in prompt
     assert "Call `response` only as a top-level tool" in prompt
+
+
+def test_extract_tool_request_parses_single_xml_invoke() -> None:
+    message = (
+        '<invoke name="code_execution_tool">\n'
+        "<parameter name=\"runtime\">terminal</parameter>\n"
+        "<parameter name=\"code\">print('hi')</parameter>\n"
+        "</invoke>"
+    )
+    request = extract_tool_request(message)
+    assert request == {
+        "tool_name": "code_execution_tool",
+        "tool_args": {"runtime": "terminal", "code": "print('hi')"},
+    }
+
+
+def test_extract_tool_request_parses_nested_parallel_xml_invoke() -> None:
+    message = (
+        '<invoke name="parallel_tool_calls">\n'
+        '<invoke name="code_execution_tool">\n'
+        "<parameter name=\"code\">ls /a0/usr/projects/hackmode/repos/</parameter>\n"
+        "<parameter name=\"session\">0</parameter>\n"
+        "</invoke>\n"
+        "</invoke>"
+    )
+    request = extract_tool_request(message)
+    assert request == {
+        "tool_name": "parallel",
+        "tool_args": {
+            "calls": [
+                {
+                    "tool_name": "code_execution_tool",
+                    "tool_args": {
+                        "code": "ls /a0/usr/projects/hackmode/repos/",
+                        "session": "0",
+                    },
+                }
+            ]
+        },
+    }
+    tool_name, tool_args = normalize_tool_request(request)
+    assert tool_name == "parallel"
+    assert parallel_tools.normalize_parallel_tool_calls(
+        parallel_tools.extract_tool_calls(tool_args)
+    )[0].tool_name == "code_execution_tool"
+
+
+def test_extract_tool_request_parses_sibling_xml_invokes_as_parallel() -> None:
+    message = (
+        '<invoke name="code_execution_tool">\n'
+        "<parameter name=\"code\">whoami</parameter>\n"
+        "</invoke>\n"
+        '<invoke name="code_execution_tool">\n'
+        "<parameter name=\"code\">id</parameter>\n"
+        "</invoke>"
+    )
+    request = extract_tool_request(message)
+    assert request is not None
+    tool_name, tool_args = normalize_tool_request(request)
+    assert tool_name == "parallel"
+    assert len(parallel_tools.extract_tool_calls(tool_args)) == 2
+
+
+def test_extract_tool_request_parses_parallel_wrapper_with_calls_parameter() -> None:
+    message = (
+        '<invoke name="parallel_tool_calls">\n'
+        "<parameter name=\"calls\">"
+        '[{"tool_name": "response", "tool_args": {"text": "done"}}]'
+        "</parameter>\n"
+        "</invoke>"
+    )
+    request = extract_tool_request(message)
+    assert request is not None
+    tool_name, tool_args = normalize_tool_request(request)
+    assert tool_name == "parallel"
+
+
+def test_extract_xml_tool_request_rejects_prose_and_junk() -> None:
+    assert extract_tool_request("Use <invoke name=\"response\"> like this") is None
+    assert extract_tool_request("text before\n<invoke name=\"response\"></invoke>") is None
+    assert extract_tool_request('<invoke name="response">no close') is None
+    assert (
+        extract_tool_request('<invoke name="response"></invoke> trailing text') is None
+    )
+    assert extract_tool_request("") is None
+
+
+def test_extract_tool_request_still_prefers_json_requests() -> None:
+    message = '{"tool_name": "response", "tool_args": {"text": "ok"}}'
+    assert extract_tool_request(message) == {
+        "tool_name": "response",
+        "tool_args": {"text": "ok"},
+    }
+
+
+def test_xml_tool_request_is_not_misformatted() -> None:
+    message = '<invoke name="code_execution_tool"><parameter name="code">x</parameter></invoke>'
+    assert is_misformatted_tool_request(message) is False
+
+
+
+
+def test_extract_tool_request_recovers_invalid_json_with_raw_newlines() -> None:
+    # Models occasionally emit the text tool protocol with literal newlines
+    # inside string values (invalid JSON). The tolerant parser must still
+    # recover the request instead of the message degrading to chat text.
+    message = (
+        '{"tool_name": "text_editor", "tool_args": {"action": "write", '
+        '"content": "# Report\n\n**Target:** infra {target_name}\n", '
+        '"path": "/tmp/report.md"}}'
+    )
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(message)
+
+    request = extract_tool_request(message)
+    assert request is not None
+    assert request["tool_name"] == "text_editor"
+    assert request["tool_args"]["action"] == "write"
+    assert "{target_name}" in request["tool_args"]["content"]
+
+
+def test_extract_tool_request_still_requires_complete_message_for_valid_json() -> None:
+    message = '{"tool_name": "response", "tool_args": {"text": "ok"}} trailing'
+    assert extract_tool_request(message) is None

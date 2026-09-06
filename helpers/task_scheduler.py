@@ -1,5 +1,7 @@
 import asyncio
 from datetime import datetime, timezone, timedelta
+import hashlib
+import json
 import os
 import random
 import threading
@@ -15,7 +17,7 @@ nest_asyncio.apply()
 from crontab import CronTab
 from pydantic import BaseModel, Field, PrivateAttr
 
-from agent import Agent, AgentContext, UserMessage
+from agent import Agent, AgentContext, AgentContextType, UserMessage
 from initialize import initialize_agent
 from helpers.persist_chat import save_tmp_chat
 from helpers.print_style import PrintStyle
@@ -28,6 +30,75 @@ from typing import Annotated
 
 SCHEDULER_FOLDER = "usr/scheduler"
 LOCAL_TIMEZONE_ALIASES = {"local", "user", "default", "current", "current_timezone"}
+PREVIOUS_RUN_OUTPUT_MAX_BYTES = 32 * 1024
+SCHEDULER_RUN_CONTEXT_KEY = "scheduler_run"
+SCHEDULER_TERMINAL_RESULT_KEY = "_scheduler_terminal_result"
+
+
+class NonTerminalTaskResultError(RuntimeError):
+    pass
+
+
+def bound_previous_run_output(
+    output: str,
+    limit_bytes: int = PREVIOUS_RUN_OUTPUT_MAX_BYTES,
+) -> tuple[str, str, int, bool]:
+    """Return bounded UTF-8 output, full digest/size, and truncation state."""
+    if limit_bytes <= 0:
+        raise ValueError("Previous run output limit must be positive")
+
+    encoded = output.encode("utf-8")
+    digest = hashlib.sha256(encoded).hexdigest()
+    if len(encoded) <= limit_bytes:
+        return output, digest, len(encoded), False
+
+    bounded = encoded[:limit_bytes].decode("utf-8", errors="ignore")
+    return bounded, digest, len(encoded), True
+
+
+def record_scheduler_terminal_response(agent: Agent, tool_name: str, response: Any) -> None:
+    """Attest a scheduler run's terminal response after tool extensions run."""
+    if tool_name != "response" or not getattr(response, "break_loop", False):
+        return
+    output = getattr(response, "message", None)
+    if not isinstance(output, str) or not output.strip():
+        return
+
+    run = agent.context.get_data(SCHEDULER_RUN_CONTEXT_KEY)
+    if not isinstance(run, dict) or not run.get("task_id") or not run.get("run_id"):
+        return
+    agent.context.set_data(
+        SCHEDULER_TERMINAL_RESULT_KEY,
+        {"run_id": run["run_id"], "output": output},
+    )
+
+
+def build_task_prompt(
+    task: "BaseTask",
+    task_context: str | None = None,
+) -> str:
+    sections: list[str] = []
+    if task_context:
+        sections.append(f"## Context:\n{task_context}")
+    sections.append(f"## Task:\n{task.prompt}")
+
+    if task.previous_run_output is not None and task.previous_run_id:
+        previous = {
+            "run_id": task.previous_run_id,
+            "status": TaskRunStatus.SUCCEEDED.value,
+            "sha256": task.previous_run_output_sha256,
+            "full_output_bytes": task.previous_run_output_bytes,
+            "output_limit_bytes": task.previous_run_output_limit_bytes,
+            "truncated": task.previous_run_output_truncated,
+            "full_run_context_id": task.previous_run_id,
+            "output": task.previous_run_output,
+        }
+        sections.append(
+            "## Previous run result:\n"
+            + json.dumps(previous, ensure_ascii=False, sort_keys=True)
+        )
+
+    return "\n\n".join(sections)
 
 
 def normalize_schedule_timezone(timezone_name: str | None) -> str:
@@ -80,6 +151,15 @@ class TaskState(str, Enum):
     RUNNING = "running"
     DISABLED = "disabled"
     ERROR = "error"
+
+
+class TaskRunStatus(str, Enum):
+    NEVER = "never"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    TIMED_OUT = "timed_out"
 
 
 class TaskType(str, Enum):
@@ -173,6 +253,19 @@ class BaseTask(BaseModel):
     updated_at: datetime = Field(default_factory=_now)
     last_run: datetime | None = None
     last_result: str | None = None
+    current_run_id: str | None = None
+    last_run_id: str | None = None
+    last_run_status: TaskRunStatus = TaskRunStatus.NEVER
+    previous_run_id: str | None = None
+    previous_run_output: str | None = None
+    previous_run_output_sha256: str | None = None
+    previous_run_output_bytes: int | None = None
+    previous_run_output_truncated: bool = False
+    previous_run_output_limit_bytes: int = Field(
+        default=PREVIOUS_RUN_OUTPUT_MAX_BYTES,
+        ge=1,
+        le=PREVIOUS_RUN_OUTPUT_MAX_BYTES,
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -643,6 +736,22 @@ class SchedulerTaskList(BaseModel):
         with self._lock:
             return next((task for task in self.tasks if task.uuid == task_uuid), None)
 
+    def get_task_by_run_id(self, run_id: str) -> Union[ScheduledTask, AdHocTask, PlannedTask] | None:
+        with self._lock:
+            return next(
+                (
+                    task
+                    for task in self.tasks
+                    if run_id
+                    in {
+                        task.current_run_id,
+                        task.last_run_id,
+                        task.previous_run_id,
+                    }
+                ),
+                None,
+            )
+
     def get_task_by_name(self, name: str) -> Union[ScheduledTask, AdHocTask, PlannedTask] | None:
         with self._lock:
             return next((task for task in self.tasks if task.name == name), None)
@@ -687,9 +796,12 @@ class TaskScheduler:
             self._running_tasks_lock = threading.RLock()
             self._initialized = True
 
-    def _register_running_task(self, task_uuid: str, deferred_task: DeferredTask) -> None:
+    def _register_running_task(self, task_uuid: str, deferred_task: DeferredTask) -> bool:
         with self._running_tasks_lock:
+            if task_uuid in self._running_deferred_tasks:
+                return False
             self._running_deferred_tasks[task_uuid] = deferred_task
+            return True
 
     def _unregister_running_task(self, task_uuid: str) -> None:
         with self._running_tasks_lock:
@@ -710,7 +822,7 @@ class TaskScheduler:
             running_tasks = list(self._running_deferred_tasks.keys())
         for task_uuid in running_tasks:
             task = self.get_task_by_uuid(task_uuid)
-            if task and task.context_id == context_id:
+            if task and context_id in {task.context_id, task.current_run_id}:
                 if self.cancel_running_task(task_uuid, terminate_thread=terminate_thread):
                     cancelled_any = True
         return cancelled_any
@@ -745,6 +857,9 @@ class TaskScheduler:
 
     def get_task_by_uuid(self, task_uuid: str) -> Union[ScheduledTask, AdHocTask, PlannedTask] | None:
         return self._tasks.get_task_by_uuid(task_uuid)
+
+    def get_task_by_run_id(self, run_id: str) -> Union[ScheduledTask, AdHocTask, PlannedTask] | None:
+        return self._tasks.get_task_by_run_id(run_id)
 
     def get_task_by_name(self, name: str) -> Union[ScheduledTask, AdHocTask, PlannedTask] | None:
         return self._tasks.get_task_by_name(name)
@@ -819,6 +934,52 @@ class TaskScheduler:
     async def update_task(self, task_uuid: str, **update_params) -> Union[ScheduledTask, AdHocTask, PlannedTask] | None:
         return await self.update_task_checked(task_uuid, lambda task: True, **update_params)
 
+    async def _finish_run(
+        self,
+        task_uuid: str,
+        run_id: str,
+        status: TaskRunStatus,
+        result: str | None = None,
+    ) -> Union[ScheduledTask, AdHocTask, PlannedTask] | None:
+        finished_at = _now()
+
+        def finish(task: Union[ScheduledTask, AdHocTask, PlannedTask]) -> None:
+            task.current_run_id = None
+            task.last_run_id = run_id
+            task.last_run_status = status
+            task.last_run = finished_at
+            task.updated_at = finished_at
+
+            if status == TaskRunStatus.SUCCEEDED and result is not None:
+                bounded, digest, output_bytes, truncated = bound_previous_run_output(
+                    result,
+                    task.previous_run_output_limit_bytes,
+                )
+                task.state = TaskState.IDLE
+                task.last_result = bounded
+                task.previous_run_id = run_id
+                task.previous_run_output = bounded
+                task.previous_run_output_sha256 = digest
+                task.previous_run_output_bytes = output_bytes
+                task.previous_run_output_truncated = truncated
+            elif status == TaskRunStatus.CANCELLED:
+                task.state = TaskState.IDLE
+                task.last_result = "CANCELLED"
+            else:
+                task.state = TaskState.ERROR
+                label = "TIMED OUT" if status == TaskRunStatus.TIMED_OUT else "ERROR"
+                task.last_result = f"{label}: {result or 'scheduler run did not complete'}"
+
+        updated = await self._tasks.update_task_by_uuid(
+            task_uuid,
+            finish,
+            lambda task: task.current_run_id == run_id,
+        )
+        if updated is not None:
+            from helpers.state_monitor_integration import mark_dirty_all
+            mark_dirty_all(reason="task_scheduler.TaskScheduler._finish_run")
+        return updated
+
     async def __new_context(self, task: Union[ScheduledTask, AdHocTask, PlannedTask]) -> AgentContext:
         if not task.context_id:
             raise ValueError(f"Task {task.name} has no context ID")
@@ -834,6 +995,29 @@ class TaskScheduler:
             projects.activate_project(context.id, task.project_name)
 
         # Save the context
+        save_tmp_chat(context)
+        return context
+
+    async def _new_run_context(
+        self,
+        task: Union[ScheduledTask, AdHocTask, PlannedTask],
+        run_id: str,
+    ) -> AgentContext:
+        config = initialize_agent()
+        context = AgentContext(
+            config,
+            id=run_id,
+            name=f"{task.name} · {run_id[:8]}",
+            type=AgentContextType.TASK,
+            data={
+                SCHEDULER_RUN_CONTEXT_KEY: {
+                    "task_id": task.uuid,
+                    "run_id": run_id,
+                }
+            },
+        )
+        if task.project_name:
+            projects.activate_project(context.id, task.project_name)
         save_tmp_chat(context)
         return context
 
@@ -857,167 +1041,178 @@ class TaskScheduler:
                 PrintStyle.warning(message)
             return await self.__new_context(task)
 
-    async def _persist_chat(self, task: Union[ScheduledTask, AdHocTask, PlannedTask], context: AgentContext):
-        if context.id != task.context_id:
-            raise ValueError(f"Context ID mismatch for task {task.name}: context {context.id} != task {task.context_id}")
+    async def _persist_chat(
+        self,
+        task: Union[ScheduledTask, AdHocTask, PlannedTask],
+        context: AgentContext,
+        run_id: str | None = None,
+    ):
+        expected_context_id = run_id or task.context_id
+        if context.id != expected_context_id:
+            raise ValueError(
+                f"Context ID mismatch for task {task.name}: "
+                f"context {context.id} != expected {expected_context_id}"
+            )
         save_tmp_chat(context)
 
     async def _run_task(self, task: Union[ScheduledTask, AdHocTask, PlannedTask], task_context: str | None = None):
-
-        async def _run_task_wrapper(task_uuid: str, task_context: str | None = None):
-
-            # preflight checks with a snapshot of the task
-            task_snapshot: Union[ScheduledTask, AdHocTask, PlannedTask] | None = self.get_task_by_uuid(task_uuid)
-            if task_snapshot is None:
-                PrintStyle.error(f"Scheduler Task with UUID '{task_uuid}' not found")
-                self._unregister_running_task(task_uuid)
-                return
-            if task_snapshot.state == TaskState.RUNNING:
-                PrintStyle.warning(f"Scheduler Task '{task_snapshot.name}' already running, skipping")
-                self._unregister_running_task(task_uuid)
-                return
-
-            # Atomically fetch and check the task's current state
-            current_task = await self.update_task_checked(task_uuid, lambda task: task.state != TaskState.RUNNING, state=TaskState.RUNNING)
-            if not current_task:
-                PrintStyle.error(f"Scheduler Task with UUID '{task_uuid}' not found or updated by another process")
-                self._unregister_running_task(task_uuid)
-                return
-            if current_task.state != TaskState.RUNNING:
-                # This means the update failed due to state conflict
-                PrintStyle.warning(f"Scheduler Task '{current_task.name}' state is '{current_task.state}', skipping")
-                self._unregister_running_task(task_uuid)
-                return
-
-            await current_task.on_run()
-
-            # the agent instance - init in try block
-            agent = None
-
-            try:
-                PrintStyle.info(f"Scheduler Task '{current_task.name}' started")
-
-                context = await self._get_chat_context(current_task)
-                AgentContext.use(context.id)
-
-                # Ensure the context is properly registered in the AgentContext._contexts
-                # This is critical for the polling mechanism to find and stream logs
-                # Dict operations are atomic
-                # AgentContext._contexts[context.id] = context
-                agent = context.streaming_agent or context.agent0
-
-                # Prepare attachment filenames for logging
-                attachment_filenames = []
-                if current_task.attachments:
-                    for attachment in current_task.attachments:
-                        if os.path.exists(attachment):
-                            attachment_filenames.append(attachment)
-                        else:
-                            try:
-                                url = urlparse(attachment)
-                                if url.scheme in ["http", "https", "ftp", "ftps", "sftp"]:
-                                    attachment_filenames.append(attachment)
-                                else:
-                                    PrintStyle.warning(f"Skipping attachment: [{attachment}]")
-                            except Exception:
-                                PrintStyle.warning(f"Skipping attachment: [{attachment}]")
-
-                self._printer.print("User message:")
-                self._printer.print(f"> {current_task.prompt}")
-                if attachment_filenames:
-                    self._printer.print("Attachments:")
-                    for filename in attachment_filenames:
-                        self._printer.print(f"- {filename}")
-
-                task_prompt = f"# Starting scheduler task '{current_task.name}' ({current_task.uuid})"
-                if task_context:
-                    task_prompt = f"## Context:\n{task_context}\n\n## Task:\n{current_task.prompt}"
-                else:
-                    task_prompt = f"## Task:\n{current_task.prompt}"
-
-                # Log the message with message_id and attachments
-                msg_id = str(uuid.uuid4())
-                context.log.log(
-                    type="user",
-                    heading="",
-                    content=task_prompt,
-                    kvps={"attachments": attachment_filenames},
-                    id=msg_id,
-                )
-
-                agent.hist_add_user_message(
-                    UserMessage(
-                        message=task_prompt,
-                        system_message=[current_task.system_prompt],
-                        attachments=attachment_filenames,
-                        id=msg_id))
-
-                # Persist after setting up the context but before running the agent
-                # This ensures the task context is saved and can be found by polling
-                await self._persist_chat(current_task, context)
-
-                result = await agent.monologue()
-
-                # Success
-                PrintStyle.success(f"Scheduler Task '{current_task.name}' completed: {result}")
-                await self._persist_chat(current_task, context)
-                await current_task.on_success(result)
-
-                # Explicitly verify task was updated in storage after success
-                await self._tasks.reload()
-                updated_task = self.get_task_by_uuid(task_uuid)
-                if updated_task and updated_task.state != TaskState.IDLE:
-                    PrintStyle.warning(f"Fixing task state consistency: '{current_task.name}' state is not IDLE after success")
-                    await self.update_task(task_uuid, state=TaskState.IDLE)
-
-            except asyncio.CancelledError:
-                PrintStyle.warning(f"Scheduler Task '{current_task.name}' cancelled by user")
-                try:
-                    await asyncio.shield(self.update_task(task_uuid, state=TaskState.IDLE))
-                except Exception:
-                    pass
-                raise
-            except Exception as e:
-                # Error
-                PrintStyle.error(f"Scheduler Task '{current_task.name}' failed: {e}")
-                await current_task.on_error(str(e))
-
-                # Explicitly verify task was updated in storage after error
-                await self._tasks.reload()
-                updated_task = self.get_task_by_uuid(task_uuid)
-                if updated_task and updated_task.state != TaskState.ERROR:
-                    PrintStyle.warning(f"Fixing task state consistency: '{current_task.name}' state is not ERROR after failure")
-                    await self.update_task(task_uuid, state=TaskState.ERROR)
-
-                # if agent:
-                #     await agent.handle_exception("scheduler", e)
-            finally:
-                # Call on_finish for task-specific cleanup
-                try:
-                    await asyncio.shield(current_task.on_finish())
-                except asyncio.CancelledError:
-                    pass
-                except Exception:
-                    pass
-
-                # Make one final save to ensure all states are persisted
-                try:
-                    await asyncio.shield(self._tasks.save())
-                except asyncio.CancelledError:
-                    pass
-                except Exception:
-                    pass
-
-                self._unregister_running_task(task_uuid)
-
+        run_id = str(uuid.uuid4())
         deferred_task = DeferredTask(thread_name=self.__class__.__name__)
-        self._register_running_task(task.uuid, deferred_task)
-        deferred_task.start_task(_run_task_wrapper, task.uuid, task_context)
+        if not self._register_running_task(task.uuid, deferred_task):
+            raise ValueError(f"Task '{task.name}' is already starting or running")
+        try:
+            deferred_task.start_task(self._execute_task, task.uuid, run_id, task_context)
+        except Exception:
+            self._unregister_running_task(task.uuid)
+            raise
 
         # Ensure background execution doesn't exit immediately on async await, especially in script contexts.
         # Yielding briefly keeps callers like CLI scripts alive long enough for the DeferredTask thread to spin up
         # without leaving stray pending tasks that trigger \"Task was destroyed\" warnings when the loop shuts down.
         await asyncio.sleep(0.1)
+
+    async def _execute_task(
+        self,
+        task_uuid: str,
+        run_id: str,
+        task_context: str | None = None,
+    ) -> None:
+        current_task: Union[ScheduledTask, AdHocTask, PlannedTask] | None = None
+        context: AgentContext | None = None
+        try:
+            current_task = await self.update_task_checked(
+                task_uuid,
+                lambda task: task.state != TaskState.RUNNING,
+                state=TaskState.RUNNING,
+                current_run_id=run_id,
+                last_run_id=run_id,
+                last_run_status=TaskRunStatus.RUNNING,
+            )
+            if not current_task:
+                PrintStyle.warning(
+                    f"Scheduler Task '{task_uuid}' was not started because it is missing or already running"
+                )
+                return
+
+            await current_task.on_run()
+            PrintStyle.info(
+                f"Scheduler Task '{current_task.name}' started as run {run_id}"
+            )
+
+            context = await self._new_run_context(current_task, run_id)
+            AgentContext.use(context.id)
+            agent = context.streaming_agent or context.agent0
+
+            attachment_filenames: list[str] = []
+            for attachment in current_task.attachments:
+                if os.path.exists(attachment):
+                    attachment_filenames.append(attachment)
+                    continue
+                try:
+                    url = urlparse(attachment)
+                    if url.scheme in ["http", "https", "ftp", "ftps", "sftp"]:
+                        attachment_filenames.append(attachment)
+                    else:
+                        PrintStyle.warning(f"Skipping attachment: [{attachment}]")
+                except Exception:
+                    PrintStyle.warning(f"Skipping attachment: [{attachment}]")
+
+            self._printer.print("User message:")
+            self._printer.print(f"> {current_task.prompt}")
+            if attachment_filenames:
+                self._printer.print("Attachments:")
+                for filename in attachment_filenames:
+                    self._printer.print(f"- {filename}")
+
+            task_prompt = build_task_prompt(current_task, task_context)
+            msg_id = str(uuid.uuid4())
+            context.log.log(
+                type="user",
+                heading="",
+                content=task_prompt,
+                kvps={"attachments": attachment_filenames},
+                id=msg_id,
+            )
+            agent.hist_add_user_message(
+                UserMessage(
+                    message=task_prompt,
+                    system_message=[current_task.system_prompt],
+                    attachments=attachment_filenames,
+                    id=msg_id,
+                )
+            )
+            await self._persist_chat(current_task, context, run_id)
+
+            result = await agent.monologue()
+            terminal = context.get_data(SCHEDULER_TERMINAL_RESULT_KEY)
+            if (
+                not isinstance(result, str)
+                or not result.strip()
+                or not isinstance(terminal, dict)
+                or terminal.get("run_id") != run_id
+                or terminal.get("output") != result
+            ):
+                raise NonTerminalTaskResultError(
+                    "agent monologue ended without a validated terminal response-tool completion"
+                )
+
+            await self._persist_chat(current_task, context, run_id)
+            promoted = await self._finish_run(
+                task_uuid,
+                run_id,
+                TaskRunStatus.SUCCEEDED,
+                result,
+            )
+            if promoted is None:
+                PrintStyle.warning(
+                    f"Scheduler Task '{current_task.name}' ignored stale completion from run {run_id}"
+                )
+            else:
+                PrintStyle.success(
+                    f"Scheduler Task '{current_task.name}' completed as run {run_id}"
+                )
+        except asyncio.CancelledError:
+            if current_task is not None:
+                PrintStyle.warning(
+                    f"Scheduler Task '{current_task.name}' run {run_id} cancelled by user"
+                )
+                await asyncio.shield(
+                    self._finish_run(
+                        task_uuid,
+                        run_id,
+                        TaskRunStatus.CANCELLED,
+                    )
+                )
+            raise
+        except Exception as error:
+            if current_task is not None:
+                status = (
+                    TaskRunStatus.TIMED_OUT
+                    if isinstance(error, (asyncio.TimeoutError, TimeoutError))
+                    else TaskRunStatus.FAILED
+                )
+                PrintStyle.error(
+                    f"Scheduler Task '{current_task.name}' run {run_id} failed: {error}"
+                )
+                await self._finish_run(task_uuid, run_id, status, str(error))
+        finally:
+            if context is not None and current_task is not None:
+                try:
+                    await asyncio.shield(
+                        self._persist_chat(current_task, context, run_id)
+                    )
+                except (asyncio.CancelledError, Exception):
+                    pass
+            if current_task is not None:
+                try:
+                    await asyncio.shield(current_task.on_finish())
+                except (asyncio.CancelledError, Exception):
+                    pass
+            try:
+                await asyncio.shield(self._tasks.save())
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._unregister_running_task(task_uuid)
 
     def serialize_all_tasks(self) -> list[Dict[str, Any]]:
         """
@@ -1190,6 +1385,15 @@ def serialize_task(task: Union[ScheduledTask, AdHocTask, PlannedTask]) -> Dict[s
         "last_run": serialize_datetime(task.last_run),
         "next_run": serialize_datetime(task.get_next_run()),
         "last_result": task.last_result,
+        "current_run_id": task.current_run_id,
+        "last_run_id": task.last_run_id,
+        "last_run_status": task.last_run_status.value,
+        "previous_run_id": task.previous_run_id,
+        "previous_run_output": task.previous_run_output,
+        "previous_run_output_sha256": task.previous_run_output_sha256,
+        "previous_run_output_bytes": task.previous_run_output_bytes,
+        "previous_run_output_truncated": task.previous_run_output_truncated,
+        "previous_run_output_limit_bytes": task.previous_run_output_limit_bytes,
         "context_id": task.context_id,
         "dedicated_context": task.is_dedicated(),
         "project": {
@@ -1257,12 +1461,29 @@ def deserialize_task(task_data: Dict[str, Any], task_class: Optional[Type[T]] = 
         "attachments": task_data.get("attachments", []),
         "project_name": task_data.get("project_name"),
         "project_color": task_data.get("project_color"),
-        "created_at": parse_datetime(task_data.get("created_at")),
-        "updated_at": parse_datetime(task_data.get("updated_at")),
         "last_run": parse_datetime(task_data.get("last_run")),
         "last_result": task_data.get("last_result"),
+        "current_run_id": task_data.get("current_run_id"),
+        "last_run_id": task_data.get("last_run_id"),
+        "last_run_status": TaskRunStatus(
+            task_data.get("last_run_status", TaskRunStatus.NEVER)
+        ),
+        "previous_run_id": task_data.get("previous_run_id"),
+        "previous_run_output": task_data.get("previous_run_output"),
+        "previous_run_output_sha256": task_data.get("previous_run_output_sha256"),
+        "previous_run_output_bytes": task_data.get("previous_run_output_bytes"),
+        "previous_run_output_truncated": task_data.get(
+            "previous_run_output_truncated", False
+        ),
+        "previous_run_output_limit_bytes": task_data.get(
+            "previous_run_output_limit_bytes", PREVIOUS_RUN_OUTPUT_MAX_BYTES
+        ),
         "context_id": task_data.get("context_id"),
     }
+    if task_data.get("created_at"):
+        common_args["created_at"] = parse_datetime(task_data.get("created_at"))
+    if task_data.get("updated_at"):
+        common_args["updated_at"] = parse_datetime(task_data.get("updated_at"))
 
     # Add type-specific fields
     if determined_class == ScheduledTask:  # type: ignore

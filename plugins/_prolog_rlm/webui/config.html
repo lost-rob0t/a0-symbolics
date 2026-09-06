@@ -1,0 +1,74 @@
+<html>
+<head>
+    <title>Prolog-RLM Runtime</title>
+</head>
+
+<body>
+    <div x-data>
+        <template x-if="config">
+            <div>
+                <div class="section-title">Prolog-RLM Runtime</div>
+                <div class="section-description">
+                    Core-loop reasoning policy enforced by Prolog-RLM. The chat model turn is routed through the runtime, which owns mode selection, adaptive recursion, and the context budget.
+                </div>
+
+                <div class="field">
+                    <div class="field-label">
+                        <div class="field-title">Core Loop Enforcement</div>
+                        <div class="field-description">
+                            When enabled, every main-loop model call goes through Prolog-RLM. Disabling falls back to native Agent Zero turns.
+                        </div>
+                    </div>
+                    <div class="field-control">
+                        <select x-model="config.core_loop_enabled">
+                            <option value="true">Enabled</option>
+                            <option value="false">Native A0 loop</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <div class="field-label">
+                        <div class="field-title">Reasoning Mode</div>
+                        <div class="field-description">
+                            <b>Auto</b>: the runtime selects direct, symbolic, or symbolic-recursive from the task shape. <b>Direct</b>: native model turn under Prolog budget/audit. <b>Symbolic</b>: typed Prolog-RLM completion. <b>Symbolic-recursive</b>: symbolic with adaptive recursion enabled.
+                        </div>
+                    </div>
+                    <div class="field-control">
+                        <select x-model="config.reasoning_mode">
+                            <option value="auto">Auto</option>
+                            <option value="direct">Direct</option>
+                            <option value="symbolic">Symbolic</option>
+                            <option value="symbolic-recursive">Symbolic recursive</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <div class="field-label">
+                        <div class="field-title">Context Budget (%)</div>
+                        <div class="field-description">
+                            Share of the model context window reserved as the runtime context budget. Default 30%.
+                        </div>
+                    </div>
+                    <div class="field-control">
+                        <input type="number" min="1" max="100" x-model="config.context_budget_percent" placeholder="30" />
+                    </div>
+                </div>
+
+                <div class="field">
+                    <div class="field-label">
+                        <div class="field-title">Completion Timeout (seconds)</div>
+                        <div class="field-description">
+                            Wall-clock limit for runtime-owned symbolic turns. Direct mode keeps the normal Agent Zero streaming path.
+                        </div>
+                    </div>
+                    <div class="field-control">
+                        <input type="number" min="1" x-model="config.completion_timeout_seconds" placeholder="300" />
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</body>
+</html>
