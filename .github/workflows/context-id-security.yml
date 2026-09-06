@@ -42,7 +42,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   regression:
-    runs-on: ubuntu-latest
+    runs-on: nix
     timeout-minutes: 75
     steps:
       - name: Checkout exact candidate
@@ -50,8 +50,8 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Install Nix
-        uses: https://github.com/cachix/install-nix-action@v31.11.1
+      - name: Verify host nix
+        run: nix --version
 
       - name: Context ID security regression
         run: nix develop --command pytest -q tests/test_context_id_security.py
