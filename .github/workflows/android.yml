@@ -8,6 +8,13 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+
+# The self-hosted docker runner degrades when several SDK/nix builds run
+# concurrently (docker.sock hangs, all jobs get cancelled). Serialize the
+# heavy jobs; they queue instead of stampeding.
+concurrency:
+  group: heavy-ci-${{ github.repository }}
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
