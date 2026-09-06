@@ -9,11 +9,11 @@ on:
 permissions:
   contents: read
 
-# The self-hosted docker runner degrades when several SDK/nix builds run
-# concurrently (docker.sock hangs, all jobs get cancelled). Serialize the
-# heavy jobs; they queue instead of stampeding.
+# Serialize Android SDK/gradle jobs; they queue instead of stampeding and
+# overloading a single runner. The nix workflows queue separately (nix-ci
+# lane on the host nix runner).
 concurrency:
-  group: heavy-ci-${{ github.repository }}
+  group: android-ci-${{ github.repository }}
   cancel-in-progress: false
 jobs:
   build:
