@@ -78,11 +78,21 @@ class PrologRLM:
     async def status(self, timeout: float | None = None) -> RunResult:
         return await self.call("status", timeout=timeout)
 
-    async def direct(self, prompt: str, budget: dict[str, Any] | None = None,
+    async def direct(self, prompt: str, context: str = "",
+                     budget: dict[str, Any] | None = None,
                      timeout: float | None = None) -> RunResult:
         return await self.call(
             "direct",
-            {"prompt": prompt, "budget": budget or {}},
+            {"prompt": prompt, "context": context, "budget": budget or {}},
+            timeout=timeout,
+        )
+
+    async def compile(self, request: dict[str, Any],
+                      timeout: float | None = None) -> RunResult:
+        """Compile host context through the Prolog context compiler."""
+        return await self.call(
+            "context_compile",
+            {"request": request},
             timeout=timeout,
         )
 

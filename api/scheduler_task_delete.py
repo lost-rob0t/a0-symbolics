@@ -28,24 +28,18 @@ class SchedulerTaskDelete(ApiHandler):
         if not task:
             return {"error": f"Task with ID {task_id} not found"}
 
-        context = None
-        if task.context_id:
-            context = self.use_context(task.context_id)
+        context = AgentContext.get(task.current_run_id) if task.current_run_id else None
 
-        # If the task is running, update its state to IDLE first
+        # Cancel the fresh per-occurrence run before removing durable task state.
         if task.state == TaskState.RUNNING:
             scheduler.cancel_running_task(task_id, terminate_thread=True)
             if context:
                 context.reset()
-            # Update the state to IDLE so any ongoing processes know to terminate
-            await scheduler.update_task(task_id, state=TaskState.IDLE)
-            # Force a save to ensure the state change is persisted
-            await scheduler.save()
 
-        # This is a dedicated context for the task, so we remove it
-        if context and context.id == task.uuid:
-            AgentContext.remove(context.id)
-            persist_chat.remove_chat(context.id)
+        legacy_context = AgentContext.get(task.context_id) if task.context_id else None
+        if legacy_context and legacy_context.id == task.uuid:
+            AgentContext.remove(legacy_context.id)
+            persist_chat.remove_chat(legacy_context.id)
 
         # Remove the task
         await scheduler.remove_task_by_uuid(task_id)

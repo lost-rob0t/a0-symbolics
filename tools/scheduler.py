@@ -213,11 +213,7 @@ class SchedulerTool(Tool):
         if not task:
             return Response(message=f"Task not found: {task_uuid}", break_loop=False)
         await TaskScheduler.get().run_task_by_uuid(task_uuid, task_context)
-        if task.context_id == self.agent.context.id:
-            break_loop = True  # break loop if task is running in the same context, otherwise it would start two conversations in one window
-        else:
-            break_loop = False
-        return Response(message=f"Task started: {task_uuid}", break_loop=break_loop)
+        return Response(message=f"Task started: {task_uuid}", break_loop=False)
 
     async def delete_task(self, **kwargs) -> Response:
         task_uuid: str = kwargs.get("uuid", "")
@@ -228,19 +224,17 @@ class SchedulerTool(Tool):
         if not task:
             return Response(message=f"Task not found: {task_uuid}", break_loop=False)
 
-        context = None
-        if task.context_id:
-            context = AgentContext.get(task.context_id)
+        context = AgentContext.get(task.current_run_id) if task.current_run_id else None
 
         if task.state == TaskState.RUNNING:
+            TaskScheduler.get().cancel_running_task(task_uuid, terminate_thread=True)
             if context:
                 context.reset()
-            await TaskScheduler.get().update_task(task_uuid, state=TaskState.IDLE)
-            await TaskScheduler.get().save()
 
-        if context and context.id == task.uuid:
-            AgentContext.remove(context.id)
-            persist_chat.remove_chat(context.id)
+        legacy_context = AgentContext.get(task.context_id) if task.context_id else None
+        if legacy_context and legacy_context.id == task.uuid:
+            AgentContext.remove(legacy_context.id)
+            persist_chat.remove_chat(legacy_context.id)
 
         await TaskScheduler.get().remove_task_by_uuid(task_uuid)
         if TaskScheduler.get().get_task_by_uuid(task_uuid) is None:
@@ -405,9 +399,6 @@ class SchedulerTool(Tool):
         task: ScheduledTask | AdHocTask | PlannedTask | None = scheduler.get_task_by_uuid(task_uuid)
         if not task:
             return Response(message=f"Task not found: {task_uuid}", break_loop=False)
-
-        if task.context_id == self.agent.context.id:
-            return Response(message="You can only wait for tasks running in their own dedicated context.", break_loop=False)
 
         done = False
         elapsed = 0

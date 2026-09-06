@@ -43,5 +43,7 @@ Direct child DOX files:
 | [a0-manage-plugin/AGENTS.md](a0-manage-plugin/AGENTS.md) | Plugin install, update, scan, enable, disable, and removal workflows. |
 | [a0-plugin-router/AGENTS.md](a0-plugin-router/AGENTS.md) | Routing plugin-related user requests to specialist skills. |
 | [a0-review-plugin/AGENTS.md](a0-review-plugin/AGENTS.md) | Full plugin audit workflow and checklists. |
+| [a0-symbolics-issues/](a0-symbolics-issues) | Issue routing and filing for a0-symbolics and prolog-rlm trackers. |
 | [build-skill/AGENTS.md](build-skill/AGENTS.md) | Building and improving Agent Zero skills. |
+| [debug-io/](debug-io) | Debugging Prolog-RLM provider HTTP IO, attribution, and OpenRouter generation data. |
 | [scheduled-tasks/AGENTS.md](scheduled-tasks/AGENTS.md) | Managing scheduled, planned, and adhoc tasks. |
