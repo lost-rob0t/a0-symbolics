@@ -20,6 +20,7 @@
 - Update this file whenever request payloads, authentication or CSRF requirements, response shapes, route side effects, or WebSocket event contracts change.
 - `SchedulerTaskDelete` is an `ApiHandler`.
 - `SchedulerTaskDelete` defines `process(...)`.
+- Deletion cancels the active per-occurrence run context, removes only the legacy dedicated task context, and leaves independently persisted historical run chats inspectable.
 - Observed side-effect areas: filesystem writes, filesystem deletion, settings/state persistence, scheduler state.
 - Imported dependency areas include: `agent`, `helpers`, `helpers.api`, `helpers.localization`, `helpers.task_scheduler`.
 

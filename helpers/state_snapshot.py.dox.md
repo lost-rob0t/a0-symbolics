@@ -43,6 +43,7 @@
 - Snapshot building prunes non-running in-memory contexts that were previously saved but no longer have a `chat.json`, preventing stale sidebar rows after chat files are deleted outside `/chat_remove`.
 - Notification payloads use the manager's matching GUID and cursor from the same atomic read, preventing a concurrent notification from being skipped by the WebUI.
 - `StateRequestV1.collections_delta` is an optional, false-by-default capability. Negotiated state pushes may use `null` for both `contexts` and `tasks` when those collections are unchanged; HTTP polling and legacy WebSocket clients always receive full lists.
+- Scheduler task rows bind only to the current or last per-occurrence run context and expose its selectable `id` separately from the durable task `uuid`, run status, and bounded last-successful-output metadata. Older successful run contexts remain ordinary inspectable chats, and legacy task contexts remain the row source until a first run exists.
 - Keep request/response, tool, or helper semantics documented here at the same time as source changes.
 
 ## Work Guidance

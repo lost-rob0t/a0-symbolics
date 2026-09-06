@@ -316,13 +316,25 @@ async def build_snapshot_from_request(
         context_data = ctx.output()
         _apply_agent_profile_metadata(context_data, ctx, agent_profile_labels)
 
-        context_task = scheduler.get_task_by_uuid(ctx.id)
-        is_task_context = context_task is not None and context_task.context_id == ctx.id
+        get_task_by_run_id = getattr(scheduler, "get_task_by_run_id", None)
+        context_task = (
+            get_task_by_run_id(ctx.id) if callable(get_task_by_run_id) else None
+        )
+        if context_task is not None and ctx.id not in {
+            context_task.current_run_id,
+            context_task.last_run_id,
+        }:
+            context_task = None
+        if context_task is None:
+            legacy_task = scheduler.get_task_by_uuid(ctx.id)
+            if legacy_task is not None and legacy_task.last_run_id is None:
+                context_task = legacy_task
+        is_task_context = context_task is not None
 
         if not is_task_context:
             ctxs.append(context_data)
         else:
-            task_details = scheduler.serialize_task(ctx.id)
+            task_details = scheduler.serialize_task(context_task.uuid)
             if task_details:
                 context_data.update(
                     {
@@ -334,6 +346,14 @@ async def build_snapshot_from_request(
                         "prompt": task_details.get("prompt"),
                         "last_run": task_details.get("last_run"),
                         "last_result": task_details.get("last_result"),
+                        "current_run_id": task_details.get("current_run_id"),
+                        "last_run_id": task_details.get("last_run_id"),
+                        "last_run_status": task_details.get("last_run_status"),
+                        "previous_run_id": task_details.get("previous_run_id"),
+                        "previous_run_output": task_details.get("previous_run_output"),
+                        "previous_run_output_sha256": task_details.get("previous_run_output_sha256"),
+                        "previous_run_output_bytes": task_details.get("previous_run_output_bytes"),
+                        "previous_run_output_truncated": task_details.get("previous_run_output_truncated"),
                         "attachments": task_details.get("attachments", []),
                         "context_id": task_details.get("context_id"),
                     }
