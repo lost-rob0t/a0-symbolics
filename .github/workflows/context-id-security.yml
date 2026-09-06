@@ -10,6 +10,7 @@ on:
       - "api/chat_create.py"
       - "api/chat_remove.py"
       - "tests/test_context_id_security.py"
+      - "nix/**"
       - ".github/workflows/context-id-security.yml"
   push:
     branches:
@@ -22,6 +23,7 @@ on:
       - "api/chat_create.py"
       - "api/chat_remove.py"
       - "tests/test_context_id_security.py"
+      - "nix/**"
       - ".github/workflows/context-id-security.yml"
   workflow_dispatch:
 
