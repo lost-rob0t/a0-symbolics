@@ -414,6 +414,62 @@ async def test_transport_retries_provider_state_as_local_replay(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_transport_retries_without_tool_choice_when_upstream_fails_forced_call(monkeypatch):
+    calls: list[dict] = []
+
+    async def fake_aresponses(*args, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise RuntimeError(
+                "Upstream error from NextBit: upstream model did not return "
+                "a valid tool call for the requested tool_choice"
+            )
+        return {
+            "id": "resp_no_tool_choice",
+            "output": [
+                {
+                    "type": "function_call",
+                    "id": "fc_1",
+                    "call_id": "call_1",
+                    "name": "lookup",
+                    "arguments": '{\"q\": \"a0\"}',
+                }
+            ],
+        }
+
+    monkeypatch.setattr(litellm_transport, "aresponses", fake_aresponses)
+
+    transport = litellm_transport.LiteLLMTransport(
+        model="openrouter/z-ai/glm-5.3-flash",
+        messages=[{"role": "user", "content": "new"}],
+        kwargs={
+            "tools": [{"type": "function", "name": "lookup", "parameters": {}}],
+            "tool_choice": "required",
+        },
+    )
+
+    parsed = await transport.acomplete()
+
+    assert '"tool_name": "lookup"' in parsed["response_delta"]
+    assert transport.last_result is not None
+    assert transport.last_result.function_calls[0].call_id == "call_1"
+    assert calls[0].get("tool_choice") == "required"
+    assert "tool_choice" not in calls[1]
+    assert transport.last_result.capability.get("tool_choice_dropped") is True
+
+    next_transport = litellm_transport.LiteLLMTransport(
+        model="openrouter/z-ai/glm-5.3-flash",
+        messages=[{"role": "user", "content": "again"}],
+        kwargs={
+            "tools": [{"type": "function", "name": "lookup", "parameters": {}}],
+            "tool_choice": "required",
+        },
+    )
+    request = next_transport._responses_request(stream=False)
+    assert request.get("tool_choice") == "required"
+
+
+@pytest.mark.asyncio
 async def test_transport_downgrades_unsupported_builtin_tools(monkeypatch):
     calls: list[dict] = []
 
