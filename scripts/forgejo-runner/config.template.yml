@@ -1,0 +1,40 @@
+# Forgejo runner configuration template.
+# deploy.sh substitutes @RUNNER_DIR@ with the absolute runner state directory.
+#
+# Labels decide which CI lane this runner serves:
+#   nix:host           host executor for the nix-ci lane (sandboxed builds,
+#                      nix/python jobs). Requires nix, node and git on PATH.
+#   host:host          plain host executor.
+#   ubuntu-latest:docker://ghcr.io/catthehacker/ubuntu:act-latest
+#                      docker executor for the android-ci lane.
+# For a dedicated lane runner, trim this list to one entry. Do NOT put the
+# nix label on a docker-only runner: docker containers cannot sandbox nix
+# builds, so unsandboxed root builds fail their purity checks.
+log:
+  level: info
+  job_level: info
+
+runner:
+  file: @RUNNER_DIR@/.runner
+  # Keep capacity at 1: concurrent SDK/nix builds on one runner degrade its
+  # docker daemon (docker.sock hangs, every running job gets cancelled).
+  # Scale by adding runner instances or machines instead.
+  capacity: 1
+  # nix closure builds and torch-chain tests run long; the android build
+  # alone needs ~25m quiet. The CI lanes allow up to 3h.
+  timeout: 3h
+  shutdown_timeout: 3h
+  fetch_timeout: 30s
+  fetch_interval: 2s
+  insecure: false
+  labels:
+    - nix:host
+    - host:host
+    - ubuntu-latest:docker://ghcr.io/catthehacker/ubuntu:act-latest
+
+cache:
+  enabled: true
+
+container:
+  docker_host: "-"
+  valid_volumes: []
