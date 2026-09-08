@@ -32,6 +32,7 @@ class TransportRecovery(Enum):
     RAISE = "raise"
     RETRY_RESPONSES = "retry_responses"
     RETRY_LOCAL_RESPONSES = "retry_local_responses"
+    RETRY_DROP_TOOL_CHOICE = "retry_drop_tool_choice"
     FALLBACK_TO_CHAT = "fallback_to_chat"
 
 
@@ -83,6 +84,7 @@ class TransportPolicy:
     mode: TransportMode
     allow_fallback: bool = True
     retried_reasoning: bool = False
+    retried_tool_choice: bool = False
     fallback_error: Exception | None = None
     state_fallback_error: Exception | None = None
     cache_key: str = ""
@@ -163,6 +165,9 @@ class TransportPolicy:
         if not self.retried_reasoning and _is_responses_reasoning_effort_error(exc):
             self.retried_reasoning = True
             return TransportRecovery.RETRY_RESPONSES
+        if not self.retried_tool_choice and _is_tool_choice_not_honored_error(exc):
+            self.retried_tool_choice = True
+            return TransportRecovery.RETRY_DROP_TOOL_CHOICE
         if (
             self.state == RESPONSES_STATE_PROVIDER
             and _is_responses_state_unsupported_error(exc)
@@ -356,6 +361,9 @@ class LiteLLMTransport:
                 "effort": RESPONSES_REASONING_FALLBACK_EFFORT
             }
             return True
+        if recovery is TransportRecovery.RETRY_DROP_TOOL_CHOICE:
+            self.kwargs["a0_drop_tool_choice"] = True
+            return True
         if recovery is TransportRecovery.RETRY_LOCAL_RESPONSES:
             self.kwargs["responses_state"] = RESPONSES_STATE_LOCAL
             self.kwargs.pop("previous_response_id", None)
@@ -451,7 +459,7 @@ class LiteLLMTransport:
         )
 
     def _capability_metadata(self) -> dict[str, Any]:
-        return {
+        metadata = {
             "mode": self.policy.mode.value,
             "state": self.policy.state,
             "cache_key": self.policy.cache_key,
@@ -465,6 +473,9 @@ class LiteLLMTransport:
                 self.kwargs.get("_a0_responses_builtin_downgrades") or []
             ),
         }
+        if _coerce_bool(self.kwargs.get("a0_drop_tool_choice"), default=False):
+            metadata["tool_choice_dropped"] = True
+        return metadata
 
 
 class ChatCompletionsTransport:
@@ -707,6 +718,9 @@ class ResponsesTransport:
         messages: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         request = dict(kwargs)
+        drop_tool_choice = _coerce_bool(
+            request.pop("a0_drop_tool_choice", False), default=False
+        )
         response_function_tools = request.pop("a0_responses_function_tools", None)
         response_builtin_tools = request.pop("responses_builtin_tools", None)
         reasoning_efforts = request.pop("a0_responses_reasoning_efforts", None)
@@ -783,6 +797,9 @@ class ResponsesTransport:
         if not _has_tools(request.get("tools")):
             request.pop("tool_choice", None)
             request.pop("parallel_tool_calls", None)
+
+        if drop_tool_choice:
+            request.pop("tool_choice", None)
 
         cls.prepare_prompt_caching(request, messages or [], model=model)
 
@@ -1376,6 +1393,7 @@ def _drop_responses_only_kwargs(kwargs: dict[str, Any]) -> None:
 def _drop_internal_transport_kwargs(kwargs: dict[str, Any]) -> None:
     _drop_legacy_transport_kwargs(kwargs)
     kwargs.pop("a0_explicit_prompt_caching", None)
+    kwargs.pop("a0_drop_tool_choice", None)
     kwargs.pop("a0_responses_function_tools", None)
     kwargs.pop("a0_responses_reasoning_efforts", None)
     kwargs.pop("a0_responses_none_is_reasoning_effort", None)
@@ -1754,6 +1772,11 @@ def _normalize_reasoning_effort(
     if normalized in supported:
         return normalized
     return RESPONSES_REASONING_FALLBACK_EFFORT
+
+
+def _is_tool_choice_not_honored_error(exc: Exception) -> bool:
+    text = _exception_text(exc).lower()
+    return "tool_choice" in text and "did not return a valid tool call" in text
 
 
 def _is_responses_reasoning_effort_error(exc: Exception) -> bool:
