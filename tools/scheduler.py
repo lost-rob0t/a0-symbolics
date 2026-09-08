@@ -165,6 +165,48 @@ class SchedulerTool(Tool):
             color = None
         return project_slug, color
 
+    def _apply_task_kb_settings(self, task, kwargs: dict) -> Response | None:
+        """Apply task-kb and run-bound kwargs to a newly created task.
+
+        Shared by all create_* actions so new tasks accept the same kb and
+        run-context fields as ``update_task``. Returns an error Response or
+        None on success.
+        """
+        update_params: dict = {}
+        if "task_kb" in kwargs:
+            kb = kwargs.get("task_kb")
+            if not isinstance(kb, list) or not all(isinstance(e, str) for e in kb):
+                return Response(message="task_kb must be a list of strings", break_loop=False)
+            update_params["task_kb"] = [e for e in kb if e.strip()]
+        if "max_run_contexts" in kwargs:
+            try:
+                update_params["max_run_contexts"] = max(1, int(kwargs.get("max_run_contexts")))
+            except (TypeError, ValueError):
+                return Response(message="max_run_contexts must be an integer", break_loop=False)
+        if "agent_profile" in kwargs:
+            profile = kwargs.get("agent_profile")
+            if profile is None or (isinstance(profile, str) and profile.strip()):
+                update_params["agent_profile"] = profile.strip() if isinstance(profile, str) else profile
+            else:
+                return Response(message="agent_profile must be a non-empty string or null", break_loop=False)
+        if "model_override" in kwargs:
+            mo = kwargs.get("model_override")
+            if mo is None:
+                update_params["model_override"] = None
+            elif isinstance(mo, dict) and mo:
+                update_params["model_override"] = mo
+            elif isinstance(mo, str) and mo.strip():
+                update_params["model_override"] = {"preset_name": mo.strip()}
+            else:
+                return Response(
+                    message="model_override must be a non-empty object, preset name, or null",
+                    break_loop=False,
+                )
+        # Reuse the pydantic model kwargs passthrough in BaseTask.update.
+        if update_params:
+            task.update(**update_params)
+        return None
+
     async def list_tasks(self, **kwargs) -> Response:
         state_filter: list[str] | None = kwargs.get("state", None)
         type_filter: list[str] | None = kwargs.get("type", None)
@@ -236,6 +278,18 @@ class SchedulerTool(Tool):
             AgentContext.remove(legacy_context.id)
             persist_chat.remove_chat(legacy_context.id)
 
+        # Remove all persisted historical run-context chats for this task.
+        # TODO(MACHINE-SPIRIT): unify with task-kb retention rules once the
+        # MACHINE-SPIRIT grammar unification lands.
+        for run_ctx_id in list(getattr(task, "run_context_ids", []) or []):
+            ctx = AgentContext.get(run_ctx_id)
+            if ctx:
+                AgentContext.remove(run_ctx_id)
+            try:
+                persist_chat.remove_chat(run_ctx_id)
+            except Exception:
+                pass
+
         await TaskScheduler.get().remove_task_by_uuid(task_uuid)
         if TaskScheduler.get().get_task_by_uuid(task_uuid) is None:
             return Response(message=f"Task deleted: {task_uuid}", break_loop=False)
@@ -257,6 +311,47 @@ class SchedulerTool(Tool):
         for field in ("name", "system_prompt", "prompt", "attachments"):
             if field in kwargs:
                 update_params[field] = kwargs[field]
+
+        # Task knowledge base entries: replace wholesale when provided.
+        if "task_kb" in kwargs:
+            kb = kwargs.get("task_kb")
+            if not isinstance(kb, list) or not all(isinstance(e, str) for e in kb):
+                return Response(
+                    message="task_kb must be a list of strings", break_loop=False
+                )
+            update_params["task_kb"] = [e for e in kb if e.strip()]
+
+        # Bound on persisted historical run chats for this task.
+        if "max_run_contexts" in kwargs:
+            try:
+                update_params["max_run_contexts"] = max(1, int(kwargs.get("max_run_contexts")))
+            except (TypeError, ValueError):
+                return Response(message="max_run_contexts must be an integer", break_loop=False)
+
+        # Run-model override: named preset reference or raw slot config dict
+        # (same shape as the per-chat override handled by _model_config).
+        if "model_override" in kwargs:
+            mo = kwargs.get("model_override")
+            if mo is None:
+                update_params["model_override"] = None
+            elif isinstance(mo, dict) and mo:
+                update_params["model_override"] = mo
+            elif isinstance(mo, str) and mo.strip():
+                # Shorthand: bare preset name.
+                update_params["model_override"] = {"preset_name": mo.strip()}
+            else:
+                return Response(
+                    message="model_override must be a non-empty object, preset name, or null",
+                    break_loop=False,
+                )
+
+        # Run profile override: tasks execute with this agent profile.
+        if "agent_profile" in kwargs:
+            profile = kwargs.get("agent_profile")
+            if profile is None or (isinstance(profile, str) and profile.strip()):
+                update_params["agent_profile"] = (profile.strip() if isinstance(profile, str) else profile)
+            else:
+                return Response(message="agent_profile must be a non-empty string or null", break_loop=False)
 
         if "state" in kwargs:
             update_params["state"] = TaskState(kwargs.get("state", TaskState.IDLE))
@@ -335,6 +430,9 @@ class SchedulerTool(Tool):
             project_name=project_slug,
             project_color=project_color,
         )
+        err = self._apply_task_kb_settings(task, kwargs)
+        if err:
+            return err
         await TaskScheduler.get().add_task(task)
         return Response(message=f"Scheduled task '{name}' created: {task.uuid}", break_loop=False)
 
@@ -358,6 +456,9 @@ class SchedulerTool(Tool):
             project_name=project_slug,
             project_color=project_color,
         )
+        err = self._apply_task_kb_settings(task, kwargs)
+        if err:
+            return err
         await TaskScheduler.get().add_task(task)
         return Response(message=f"Adhoc task '{name}' created: {task.uuid}", break_loop=False)
 
@@ -385,8 +486,11 @@ class SchedulerTool(Tool):
             plan=task_plan,
             context_id=None if dedicated_context else self.agent.context.id,
             project_name=project_slug,
-            project_color=project_color
+            project_color=project_color,
         )
+        err = self._apply_task_kb_settings(task, kwargs)
+        if err:
+            return err
         await TaskScheduler.get().add_task(task)
         return Response(message=f"Planned task '{name}' created: {task.uuid}", break_loop=False)
 

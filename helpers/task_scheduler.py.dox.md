@@ -29,6 +29,12 @@
   - `get_next_run(self) -> datetime | None`
   - `is_dedicated(self) -> bool`
   - `get_next_run_minutes(self) -> int | None`
+  - Fields added for task KB and bounded run history:
+  - `task_kb: list[str]` — durable knowledge entries injected into every run prompt via `build_task_prompt`.
+  - `max_run_contexts: int` (1-100, default 10) — bound on persisted per-run task chats; oldest run chats are pruned after each finished run.
+  - `run_context_ids: list[str]` — persisted run-context chat IDs, oldest first.
+  - `agent_profile: str | None` — optional per-task agent profile override resolved in `_new_run_context` via `initialize_agent(override_settings=...)`.
+  - `model_override: dict | None` — optional per-chat model override (`preset_name` ref or raw slot config) stored under the `chat_model_override` context-data key and resolved by the `_model_config` plugin at call time.
   - `async on_run(self)`
   - `async on_finish(self)`
   - `async on_error(self, error: str)`

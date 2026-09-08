@@ -20,6 +20,15 @@
   - `async delete_task(self, **kwargs) -> Response`
   - `async update_task(self, **kwargs) -> Response`
   - `async create_scheduled_task(self, **kwargs) -> Response`
+  - `def _apply_task_kb_settings(self, task, kwargs: dict) -> Response | None`
+    - Shared by `create_scheduled_task`, `create_adhoc_task`, and `create_planned_task`.
+    - Validates and applies `task_kb` (list of strings), `max_run_contexts` (int >= 1),
+      `agent_profile` (non-empty string or null), and `model_override`
+      (non-empty object, bare preset-name string, or null) onto a freshly created task.
+- `update_task` also accepts `task_kb` (wholesale replacement), `max_run_contexts`,
+  `agent_profile`, and `model_override` (same shapes as create; `null` clears the override).
+- `delete_task` removes the legacy task context plus every persisted run context listed in
+  `task.run_context_ids` (historical run chats for this task).
 - Top-level functions:
 - `_current_action(tool: Tool, kwargs: dict) -> str`
 - `_normalize_timezone(value: Any) -> str | None`

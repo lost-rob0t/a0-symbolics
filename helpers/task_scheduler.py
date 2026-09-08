@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field, PrivateAttr
 
 from agent import Agent, AgentContext, AgentContextType, UserMessage
 from initialize import initialize_agent
-from helpers.persist_chat import save_tmp_chat
+from helpers.persist_chat import save_tmp_chat, remove_chat
 from helpers.print_style import PrintStyle
 from helpers.defer import DeferredTask
 from helpers.files import get_abs_path, make_dirs, read_file, write_file
@@ -81,6 +81,14 @@ def build_task_prompt(
     if task_context:
         sections.append(f"## Context:\n{task_context}")
     sections.append(f"## Task:\n{task.prompt}")
+
+    # Task knowledge base: durable curated notes that persist across runs.
+    # TODO(MACHINE-SPIRIT): once the MACHINE-SPIRIT unified grammar lands,
+    # these KB entries should be compiled/normalized through the shared
+    # symbolic grammar instead of being passed through verbatim.
+    if task.task_kb:
+        kb_lines = [f"- {entry}" for entry in task.task_kb]
+        sections.append("## Task KB:\n" + "\n".join(kb_lines))
 
     if task.previous_run_output is not None and task.previous_run_id:
         previous = {
@@ -249,6 +257,21 @@ class BaseTask(BaseModel):
     attachments: list[str] = Field(default_factory=list)
     project_name: str | None = Field(default=None)
     project_color: str | None = Field(default=None)
+    # Task knowledge base: durable, human/agent-curated notes injected into
+    # every run prompt (unlike previous_run_output, it is append-oriented and
+    # survives across runs regardless of run outcome).
+    task_kb: list[str] = Field(default_factory=list)
+    # Maximum number of historical run-context chats persisted for this task.
+    # A scheduler run gets a fresh context every time; this bound keeps old run
+    # chats from growing on disk without limit. Oldest run chats are pruned.
+    max_run_contexts: int = Field(default=10, ge=1, le=100)
+    # IDs of persisted run-context chats, oldest first, parallel to pruning.
+    run_context_ids: list[str] = Field(default_factory=list)
+    # Optional agent profile override for runs (None = global default profile).
+    agent_profile: str | None = Field(default=None)
+    # Optional per-chat model override (preset name ref or raw slot config)
+    # applied to each run context, resolved by the _model_config plugin.
+    model_override: dict | None = Field(default=None)
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
     last_run: datetime | None = None
@@ -307,6 +330,15 @@ class BaseTask(BaseModel):
                 self.updated_at = _now()
             if context_id is not None:
                 self.context_id = context_id
+                self.updated_at = _now()
+            if kwargs.get("task_kb") is not None:
+                self.task_kb = list(kwargs["task_kb"])  # type: ignore[attr-defined]
+                self.updated_at = _now()
+            if kwargs.get("max_run_contexts") is not None:
+                self.max_run_contexts = int(kwargs["max_run_contexts"])  # type: ignore[attr-defined]
+                self.updated_at = _now()
+            if kwargs.get("model_override") is not None:
+                self.model_override = kwargs["model_override"]  # type: ignore[attr-defined]
                 self.updated_at = _now()
             for key, value in kwargs.items():
                 if value is not None:
@@ -976,6 +1008,9 @@ class TaskScheduler:
             lambda task: task.current_run_id == run_id,
         )
         if updated is not None:
+            # Run chats are fresh per-run contexts; keep only the newest
+            # max_run_contexts of them persisted on disk.
+            await self._prune_run_contexts(task_uuid, run_id)
             from helpers.state_monitor_integration import mark_dirty_all
             mark_dirty_all(reason="task_scheduler.TaskScheduler._finish_run")
         return updated
@@ -1003,7 +1038,12 @@ class TaskScheduler:
         task: Union[ScheduledTask, AdHocTask, PlannedTask],
         run_id: str,
     ) -> AgentContext:
-        config = initialize_agent()
+        # Per-run profile override: resolve agent config against the task's
+        # profile when set, otherwise fall back to the global default profile.
+        if getattr(task, "agent_profile", None):
+            config = initialize_agent(override_settings={"agent_profile": task.agent_profile})
+        else:
+            config = initialize_agent()
         context = AgentContext(
             config,
             id=run_id,
@@ -1016,6 +1056,12 @@ class TaskScheduler:
                 }
             },
         )
+        # Per-chat model override (e.g. GLM flash preset ref or raw slot config);
+        # resolved at call time by the _model_config plugin, same key as the
+        # WebUI per-chat override path.
+        model_override = getattr(task, "model_override", None)
+        if isinstance(model_override, dict) and model_override:
+            context.set_data("chat_model_override", dict(model_override))
         if task.project_name:
             projects.activate_project(context.id, task.project_name)
         save_tmp_chat(context)
@@ -1054,6 +1100,49 @@ class TaskScheduler:
                 f"context {context.id} != expected {expected_context_id}"
             )
         save_tmp_chat(context)
+
+    @staticmethod
+    def _prune_run_context_ids(task, run_id: str) -> list[str]:
+        """Record a finished run context on the task and evict the oldest
+        persisted run chats beyond ``max_run_contexts``. Returns evicted IDs."""
+        ids = [cid for cid in task.run_context_ids if cid != run_id]
+        ids.append(run_id)
+        limit = max(1, int(task.max_run_contexts))
+        evicted: list[str] = []
+        while len(ids) > limit:
+            evicted.append(ids.pop(0))
+        task.run_context_ids = ids
+        return evicted
+
+    async def _prune_run_contexts(
+        self,
+        task_uuid: str,
+        run_id: str,
+    ) -> Union[ScheduledTask, AdHocTask, PlannedTask] | None:
+        """Track a finished run context and delete evicted run chats from disk.
+
+        Each scheduler run persists its own TASK-type context; without this
+        bound the chats folder grows without limit for recurring tasks.
+        """
+        evicted: list[str] = []
+
+        def record(task: Union[ScheduledTask, AdHocTask, PlannedTask]) -> None:
+            nonlocal evicted
+            evicted.extend(self._prune_run_context_ids(task, run_id))
+
+        updated = await self._tasks.update_task_by_uuid(task_uuid, record)
+        for ctx_id in evicted:
+            try:
+                AgentContext.remove(ctx_id)
+            except Exception:
+                pass
+            try:
+                remove_chat(ctx_id)
+            except Exception as error:
+                PrintStyle.warning(
+                    f"Failed to prune run chat {ctx_id} for task {task_uuid}: {error}"
+                )
+        return updated
 
     async def _run_task(self, task: Union[ScheduledTask, AdHocTask, PlannedTask], task_context: str | None = None):
         run_id = str(uuid.uuid4())
@@ -1378,6 +1467,11 @@ def serialize_task(task: Union[ScheduledTask, AdHocTask, PlannedTask]) -> Dict[s
         "system_prompt": task.system_prompt,
         "prompt": task.prompt,
         "attachments": task.attachments,
+        "task_kb": task.task_kb,
+        "max_run_contexts": task.max_run_contexts,
+        "run_context_ids": task.run_context_ids,
+        "agent_profile": task.agent_profile,
+        "model_override": task.model_override,
         "project_name": task.project_name,
         "project_color": task.project_color,
         "created_at": serialize_datetime(task.created_at),
@@ -1459,6 +1553,11 @@ def deserialize_task(task_data: Dict[str, Any], task_class: Optional[Type[T]] = 
         "system_prompt": task_data.get("system_prompt", ""),
         "prompt": task_data.get("prompt", ""),
         "attachments": task_data.get("attachments", []),
+        "task_kb": task_data.get("task_kb", []),
+        "max_run_contexts": task_data.get("max_run_contexts", 10),
+        "run_context_ids": task_data.get("run_context_ids", []),
+        "agent_profile": task_data.get("agent_profile"),
+        "model_override": task_data.get("model_override"),
         "project_name": task_data.get("project_name"),
         "project_color": task_data.get("project_color"),
         "last_run": parse_datetime(task_data.get("last_run")),
