@@ -76,6 +76,7 @@ let _messageWindowLoadingDirection = null;
 let _messageWindowSuppressScrollEvents = false;
 let _messageWindowPointerActive = false;
 let _messageWindowUserScrollUntil = 0;
+let _messageWindowUserScrollSeq = 0;
 let _messageWindowResizeObserver = null;
 
 // Leave a small tolerance for fractional scroll positions and the passive
@@ -243,6 +244,7 @@ export function resetMessageRenderState({ clearDom = true } = {}) {
   _messageWindowSuppressScrollEvents = false;
   _messageWindowPointerActive = false;
   _messageWindowUserScrollUntil = 0;
+  _messageWindowUserScrollSeq = 0;
   _messageWindowResizeObserver?.disconnect();
   _messageWindowResizeObserver = null;
   _processGroupStepLimits.clear();
@@ -282,6 +284,10 @@ async function renderMessageWindow({
     _messageWindowSuppressScrollEvents = true;
     cancelPendingScroll(history);
     _messageWindowResizeObserver?.disconnect();
+    // Snapshot the user-scroll intent sequence so a scroll that happens
+    // while this render is in flight can invalidate stale scroll effects
+    // (anchor restore and tail snapping) applied at the end of the render.
+    const userScrollSeqAtStart = _messageWindowUserScrollSeq;
     try {
       const anchor = preserveScroll
         ? captureMessageWindowAnchor(history)
@@ -326,20 +332,27 @@ async function renderMessageWindow({
 
       history.replaceChildren(...stagedChildren);
       copyMessageWindowDataset(history, stagedWindowState);
-      let anchorRestored = anchor
+      // A user scroll during this render invalidates the captured anchor and
+      // any tail snap; restoring either would yank the viewport away from
+      // where the reader just moved it (worst while streaming).
+      const userScrolledDuringRender =
+        _messageWindowUserScrollSeq !== userScrollSeqAtStart;
+      const followTailAfterRender = !userScrolledDuringRender &&
+        _messageWindow.isAtTail() && _messageWindowFollowTail;
+      let anchorRestored = !userScrolledDuringRender && anchor
         ? restoreMessageWindowAnchor(history, anchor)
         : false;
-      if (!anchorRestored && _messageWindow.isAtTail() && _messageWindowFollowTail) {
+      if (!anchorRestored && followTailAfterRender) {
         history.scrollTop = history.scrollHeight;
       }
 
       await nextAnimationFrame();
       refreshCollapsibleMessageOverflow(history);
-      if (anchor) {
+      if (anchor && !userScrolledDuringRender) {
         anchorRestored = restoreMessageWindowAnchor(history, anchor) ||
           anchorRestored;
       }
-      if (!anchorRestored && _messageWindow.isAtTail() && _messageWindowFollowTail) {
+      if (!anchorRestored && followTailAfterRender) {
         history.scrollTop = history.scrollHeight;
       }
 
@@ -793,6 +806,7 @@ function bindMessageWindow(history) {
   _lastMessageWindowScrollTop = history.scrollTop;
 
   const noteUserScrollIntent = () => {
+    _messageWindowUserScrollSeq += 1;
     _messageWindowUserScrollUntil =
       messageWindowNow() + MESSAGE_WINDOW_USER_SCROLL_GRACE_MS;
   };
@@ -834,8 +848,10 @@ function bindMessageWindow(history) {
       if (_messageWindowScrollFrame != null) return;
       _messageWindowScrollFrame = requestAnimationFrame(() => {
         _messageWindowScrollFrame = null;
-        if (_messageWindowRenderPromise) return;
 
+        // Track direction and tail-follow state even while a window render is
+        // in flight; streaming renders are nearly continuous, and skipping
+        // this update would pin follow-tail and fight the user's scroll.
         const previous = _lastMessageWindowScrollTop;
         const current = history.scrollTop;
         const direction = current < previous ? "older" : current > previous ? "newer" : null;
