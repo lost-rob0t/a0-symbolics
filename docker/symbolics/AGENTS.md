@@ -22,6 +22,7 @@
 - Bound both image builds and the running service to 8 GiB by default; local operators may choose a different explicit build limit.
 - Bound in-container nix builds with bounded parallelism derived from the same memory reality: `initialize.sh` derives `max-jobs`/`cores` from the container cgroup limit and writes them into `/etc/nix/nix.conf`, preserving the image-owned settings. Never rely on nix's default per-host parallelism inside a memory-capped container; operators override with `A0_NIX_MAX_JOBS`, `A0_NIX_CORES`, or `~/.config/nix/nix.conf`.
 - Generate smoke evidence for the container lifetime: `generate_smoke_evidence` retries until readiness and keeps refreshing `/run/a0-symbolics/smoke.json` (default every 30 s, `A0_SMOKE_REFRESH_SECONDS`). A one-shot boot window can permanently starve `healthcheck.sh` after a slow start or crash loop.
+- Re-enable the symbolic control-plane plugins on every boot: `initialize.sh` runs `ensure_symbolic_plugins_enabled` so stale global `.toggle-0` markers in persisted `/a0/usr` cannot leave the smoke gate (which hard-requires `_prolog_context_compiler` and `_prolog_rlm`) failing forever.
 - Treat any non-running supervised process as unhealthy; HTTP and cached smoke evidence alone are insufficient readiness evidence.
 - Never bake secrets or local user data into the image.
 - Never track `docker/symbolics/compose.yml`; local ports, mounts, devices, and machine-specific overrides belong there.
