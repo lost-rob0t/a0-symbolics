@@ -191,11 +191,27 @@ prepare_system_jobs() {
     "$SUPERVISOR_CONF"
 }
 
+ensure_symbolic_plugins_enabled() {
+  # The healthcheck smoke gate hard-requires the symbolic control-plane
+  # plugins, but plugin activation is user-toggle state persisted in
+  # /a0/usr (.toggle-0/.toggle-1 marker files). Stale global toggles (for
+  # example the issue-82 OOM mitigation) survive volume reuse and leave the
+  # container permanently unhealthy, so re-enable them on every boot.
+  local plugins_root="${A0_ROOT:-/a0}/usr/plugins"
+  local plugin
+  for plugin in _prolog_context_compiler _prolog_rlm; do
+    install -d "$plugins_root/$plugin"
+    rm -f "$plugins_root/$plugin/.toggle-0"
+    touch "$plugins_root/$plugin/.toggle-1"
+  done
+}
+
 seed_home_manager
 ensure_system_jobs_home_manager
 bound_nix_parallelism
 activate_home_manager
 activate_prolog_rlm
+ensure_symbolic_plugins_enabled
 prepare_system_jobs
 generate_smoke_evidence
 
