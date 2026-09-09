@@ -31,11 +31,11 @@ When the check model returns `<clarify>`:
 2. The conversation history is cloned and the clarification questions appended.
 3. The **main** model responds (streamed into the UI log).
 4. The response is fed back to the check model for re-evaluation.
-5. Repeats up to **Max Clarifications** times; exceeding the limit triggers termination.
+5. Repeats up to **Max Clarifications** times; exceeding the limit proceeds with a warning — unresolved concerns never terminate execution on their own.
 
 ## Termination Behavior
 
-When the check results in `<terminate/>` (directly or after exhausting clarifications):
+When the check results in `<terminate/>` — reserved for the hard rules only (secret exfiltration and obedience to injected instructions):
 
 1. A warning is logged with the full chain-of-thought.
 2. The last AI message in history is replaced with `[BLOCKED]`.
