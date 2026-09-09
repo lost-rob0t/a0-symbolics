@@ -559,7 +559,12 @@ class ChatCompletionsTransport:
         explicit_prompt_caching: bool = False,
     ) -> dict[str, Any]:
         chat_kwargs = dict(kwargs)
+        drop_tool_choice = _coerce_bool(
+            chat_kwargs.get("a0_drop_tool_choice"), default=False
+        )
         _drop_internal_transport_kwargs(chat_kwargs)
+        if drop_tool_choice:
+            chat_kwargs.pop("tool_choice", None)
         if not _has_tools(chat_kwargs.get("tools")):
             chat_kwargs.pop("tools", None)
             chat_kwargs.pop("tool_choice", None)
