@@ -25,7 +25,11 @@ from helpers.providers import ModelType as ProviderModelType, get_provider_confi
 from helpers.rate_limiter import RateLimiter
 from helpers.tokens import approximate_tokens
 from helpers.extension import extensible  # extensible: allows plugins to intercept get_api_key()
-from helpers.litellm_transport import LiteLLMTransport, ResponsesTransport
+from helpers.litellm_transport import (
+    LiteLLMTransport,
+    ResponsesTransport,
+    _is_tool_choice_not_honored_error,
+)
 from helpers.llm_result import LLMResult
 
 from langchain_core.language_models.chat_models import SimpleChatModel
@@ -632,6 +636,21 @@ class LiteLLMChatWrapper(SimpleChatModel):
             except Exception as e:
                 import asyncio
 
+                # Mid-stream tool-choice failures stream chunks before the
+                # provider gives up, so transport-level recovery never sees
+                # got_any_chunk=False. Drop the forced tool_choice once and
+                # restart the turn instead of re-raising into the retry loop,
+                # which would repeat the identical request forever.
+                if (
+                    not transport.policy.retried_tool_choice
+                    and _is_tool_choice_not_honored_error(e)
+                ):
+                    transport.policy.retried_tool_choice = True
+                    transport.kwargs["a0_drop_tool_choice"] = True
+                    result = ChatGenerationResult()
+                    await asyncio.sleep(retry_delay_s)
+                    continue
+
                 # Retry only if no chunks received and error is transient
                 if got_any_chunk or not _is_transient_litellm_error(e) or attempt >= max_retries:
                     raise
@@ -772,6 +791,21 @@ class LiteLLMChatWrapper(SimpleChatModel):
 
             except Exception as e:
                 import asyncio
+
+                # Mid-stream tool-choice failures stream chunks before the
+                # provider gives up, so transport-level recovery never sees
+                # got_any_chunk=False. Drop the forced tool_choice once and
+                # restart the turn instead of re-raising into the retry loop,
+                # which would repeat the identical request forever.
+                if (
+                    not transport.policy.retried_tool_choice
+                    and _is_tool_choice_not_honored_error(e)
+                ):
+                    transport.policy.retried_tool_choice = True
+                    transport.kwargs["a0_drop_tool_choice"] = True
+                    result = ChatGenerationResult()
+                    await asyncio.sleep(retry_delay_s)
+                    continue
 
                 if (
                     got_any_chunk

@@ -29,6 +29,7 @@
 - Treat provider-specific reasoning-effort vocabularies as request-scoped transport metadata and strip that metadata before LiteLLM. Importing a provider plugin must not mutate process-global reasoning aliases or change unrelated providers by test/import order.
 - When Agent Zero function tools are present, default Responses requests to one required native call; explicit request-level `tool_choice` and `parallel_tool_calls` values still win.
 - Retry once without `tool_choice` when a Responses endpoint reports the upstream model failed to produce the requested forced tool call (e.g. `did not return a valid tool call for the requested tool_choice`); surface the drop via the `tool_choice_dropped` capability flag and keep explicit request-level `tool_choice` behavior unchanged otherwise.
+- The `a0_drop_tool_choice` internal flag applies to both request paths: Responses requests drop `tool_choice` in `_responses_request`, and Chat Completions requests drop it in `ChatCompletionsTransport.prepare_kwargs` before internal kwargs are stripped.
 - Normalize function tool parameter schemas with an explicit object `properties` field before Responses requests so OpenAI-compatible chat backends reached through LiteLLM can validate them.
 - Prefer Responses API when configured, but fallback to Chat Completions when the provider does not support Responses.
 - Fall back to Chat Completions when a Responses request is rejected before any output by an endpoint-specific or shape-specific Bad Request indicating the provider cannot parse Responses payloads.
