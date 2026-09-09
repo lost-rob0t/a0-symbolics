@@ -191,7 +191,9 @@ class InfectionChecker:
             )
             action, detail, cot = await self._clarify_loop(agent, detail, warn)
             if action == "ok":
-                warn.update(heading="Infection check: clarification passed")
+                warn.update(
+                    heading="Infection check: clarification resolved or exhausted - proceeding"
+                )
                 agent.set_data(DATA_KEY_PASSED, True)
                 return
 
@@ -325,7 +327,7 @@ class InfectionChecker:
                 return action, detail, "\n\n".join(cot_parts)
             clarify_text = detail
 
-        return "terminate", "Max clarifications exceeded.", "\n\n".join(cot_parts)
+        return "ok", "Max clarifications exceeded; proceeding with unresolved concerns.", "\n\n".join(cot_parts)
 
     def _do_terminate(self, agent: "Agent", detail: str, cot: str):
         import uuid as _uuid

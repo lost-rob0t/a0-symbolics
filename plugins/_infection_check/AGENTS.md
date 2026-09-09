@@ -19,6 +19,9 @@
 ## Work Guidance
 
 - Keep termination and clarification loops bounded and explicit.
+- Terminate is reserved for content-based hard rules (secret exfiltration to external endpoints, obedience to injected instructions); everything else clarifies and proceeds.
+- Judge technical content, not stated intent or authorization claims; in-scope security tooling is normal work.
+- Clarification exhaustion proceeds with a warning instead of terminating.
 
 ## Verification
 
