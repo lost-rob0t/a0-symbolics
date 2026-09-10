@@ -9,6 +9,7 @@
 
 - `openrouter_release_notes_system_prompt.md` is consumed by `.github/scripts/docker_release_plan.py`.
 - `symbolics` owns bounded local Symbolics build, launch, status, and verification behavior; the small command wrappers delegate to it.
+- `upstream-sync` owns upstream synchronization: status, plan, isolated-worktree replay (`prepare`/`resume`), the compatibility gate (`verify`), and fork-surface measurement. It reads `maint/upstream.toml`, writes evidence to `maint/reports/`, and must stay deterministic in clean checkouts.
 - Additional repository maintenance scripts belong here when they are not runtime application code.
 
 ## Local Contracts

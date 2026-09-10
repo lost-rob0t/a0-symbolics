@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -267,7 +268,10 @@ def fork_surface(base: str | None, ref: str | None) -> dict:
     modified, added = fork_delta_files(base, ref)
     upstream_current = resolve_tag(latest_upstream_tag()) if latest_upstream_tag() else ""
     upstream_modified, upstream_added = fork_delta_files(base, upstream_current) if upstream_current else ([], [])
-    upstream_owned = sorted(set(modified) & (set(upstream_modified) | set(upstream_added)))
+    # Upstream-owned = vendor files that Symbolics modifies; upstream's own
+    # delta from the recorded base marks the conflict-prone overlap.
+    upstream_owned = sorted(p for p in modified if file_exists_in(base, p))
+    upstream_overlap = sorted(set(upstream_owned) & (set(upstream_modified) | set(upstream_added)))
     numstat = delta_numstat(base, ref)
     entries = []
     counts: dict[str, int] = {}
@@ -440,9 +444,24 @@ def replay_series(worktree: Path, commits: list[str], tag: str, state_dir: Path)
     done: list[str] = []
     if state_file.exists():
         done = json.loads(state_file.read_text()).get("replayed", [])
+    # Trust the worktree log over the state file: manual resolutions outside
+    # this tool still count as replayed.
+    try:
+        bodies = run_git("log", "--format=%B", f"{tag}^{{commit}}..HEAD", cwd=worktree)
+        for line in bodies.splitlines():
+            line = line.strip()
+            if line.startswith("(cherry picked from commit ") and line.endswith(")"):
+                done.append(line[len("(cherry picked from commit "):-1].strip())
+    except Exception:
+        pass
     remaining = [c for c in commits if c not in set(done)]
     replayed: list[str] = list(done)
+    skipped: list[str] = []
     for sha in remaining:
+        pick_state = Path(run_git("rev-parse", "--git-dir", cwd=worktree)) / "CHERRY_PICK_HEAD"
+        if pick_state.exists():
+            print(f"A cherry-pick is already in progress in {worktree}; resolve it first.")
+            return False, replayed
         result = subprocess.run(
             ["git", "cherry-pick", "-x", sha],
             cwd=str(worktree),
@@ -454,6 +473,22 @@ def replay_series(worktree: Path, commits: list[str], tag: str, state_dir: Path)
             state_file.write_text(
                 json.dumps({"replayed": replayed, "tag": tag, "worktree": str(worktree)}, indent=1)
             )
+            continue
+        combined = (result.stdout or "") + (result.stderr or "")
+        if "now empty" in combined:
+            subprocess.run(
+                ["git", "cherry-pick", "--skip"],
+                cwd=str(worktree),
+                capture_output=True,
+            )
+            skipped.append(sha)
+            state_file.write_text(
+                json.dumps(
+                    {"replayed": replayed, "skipped": skipped, "tag": tag, "worktree": str(worktree)},
+                    indent=1,
+                )
+            )
+            print(f"skipped empty pick {sha[:12]} (content already present upstream or in overlay)")
             continue
         report = conflict_report(worktree, tag, sha, state_dir)
         state_file.write_text(
@@ -582,15 +617,22 @@ def cmd_verify(args: argparse.Namespace) -> None:
     results["plugins"] = {"exit": plugin_probe.returncode, "output": plugin_probe.stdout.strip() or plugin_probe.stderr.strip()[-400:]}
     prolog = subprocess.run(["swipl", "--version"], capture_output=True, text=True)
     results["prolog_runtime"] = {"exit": prolog.returncode, "available": prolog.returncode == 0}
-    if args.docker:
-        compose = subprocess.run(
-            ["docker", "compose", "--project-name", "a0s-verify", "-f", "docker/symbolics/compose.yml.example", "config", "--quiet"],
-            cwd=str(repo), text=True, capture_output=True,
-        )
-        results["docker_compose"] = {"exit": compose.returncode, "error": compose.stderr.strip()[-300:]}
-    if args.nix:
-        nix = subprocess.run(["nix", "flake", "metadata", "--json"], cwd=str(repo), text=True, capture_output=True)
-        results["nix_flake"] = {"exit": nix.returncode, "error": nix.stderr.strip()[-300:]}
+    if args.full:
+        docker_available = shutil.which("docker") is not None
+        if docker_available:
+            compose = subprocess.run(
+                ["docker", "compose", "--project-name", "a0s-verify", "-f", "docker/symbolics/compose.yml.example", "config", "--quiet"],
+                cwd=str(repo), text=True, capture_output=True,
+            )
+            results["docker_compose"] = {"exit": compose.returncode, "error": compose.stderr.strip()[-300:]}
+        else:
+            results["docker_compose"] = {"exit": -1, "error": "docker not available"}
+        nix_available = shutil.which("nix") is not None
+        if nix_available:
+            nix = subprocess.run(["nix", "flake", "metadata", "--json"], cwd=str(repo), text=True, capture_output=True)
+            results["nix_flake"] = {"exit": nix.returncode, "error": nix.stderr.strip()[-300:]}
+        else:
+            results["nix_flake"] = {"exit": -1, "error": "nix not available"}
     ok = all(v.get("exit", 1) == 0 for k, v in results.items() if k not in ("prolog_runtime",))
     results["passed"] = ok
     print(json.dumps(results, indent=2))

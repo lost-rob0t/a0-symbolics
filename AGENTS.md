@@ -40,6 +40,8 @@
 - Copy live core-plugin changes back into tracked source under `plugins/`.
 - Develop new custom plugins under ignored `usr/plugins/`; tracked bundled plugins live under `plugins/`.
 - Use the framework runtime for backend and plugin-hook verification, not the separate agent execution runtime.
+- a0-symbolics is an upstream-replayable Agent Zero distribution: `maint/upstream.toml` records the immutable upstream base, stable self-updates resolve only against the Symbolics distribution remotes (never raw upstream), and `scripts/upstream-sync` owns upstream replays in isolated worktrees with rerere, range-diff, and the compatibility gate.
+- Symbolics prompt deltas ship through the `plugins/_a0s_prompts` overlay instead of modifying upstream-owned prompt files; core patches must stay individually explainable per `maint/AGENTS.md`.
 
 ## Permissions
 
@@ -81,6 +83,7 @@ Ask before:
 | [helpers/AGENTS.md](helpers/AGENTS.md) | Shared backend utilities and runtime services. |
 | [knowledge/AGENTS.md](knowledge/AGENTS.md) | Built-in agent self-knowledge. |
 | [lib/AGENTS.md](lib/AGENTS.md) | Lightweight browser-side helpers outside the WebUI bundle. |
+| [maint/AGENTS.md](maint/AGENTS.md) | Upstream base metadata, fork-surface budget, and upstream-sync tooling. |
 | [plugins/AGENTS.md](plugins/AGENTS.md) | Bundled system plugins and custom-plugin architecture. |
 | [prompts/AGENTS.md](prompts/AGENTS.md) | Core prompt templates. |
 | [scripts/AGENTS.md](scripts/AGENTS.md) | Repository maintenance scripts and automation inputs. |
