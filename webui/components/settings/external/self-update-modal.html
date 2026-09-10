@@ -228,16 +228,19 @@
                       by creating the YAML file manually.
                     </p>
                     <p>
-                      Version numbers use the format <code>vMAJOR.MINOR</code>. The first number is
-                      the major release line and moving to a newer major version requires a newer
-                      Docker image. The second number is the minor release line and those updates can
-                      be applied through Agent Zero self-update inside the existing image.
+                      Version numbers use the format <code>a0s-vMAJOR.MINOR[.SERIES]</code>.
+                      Releases are cut from the a0-symbolics distribution, never from raw
+                      upstream Agent Zero, so updates always preserve the Symbolics overlay.
+                      The first number is the upstream Agent Zero release line and moving to a
+                      newer upstream line requires a newer Docker image. The second number is the
+                      minor release line and those updates can be applied through
+                      Agent Zero self-update inside the existing image.
                     </p>
                     <p>
-                      On development branches you may also see versions like <code>v1.5+2</code>.
-                      The <code>+2</code> means that checkout is based on <code>v1.5</code> plus two
-                      additional commits after that release tag. This suffix is not used on
-                      <code>main</code>.
+                      On development branches you may also see versions like <code>a0s-v1.5+2</code>.
+                      The <code>+2</code> means that checkout is based on
+                      <code>a0s-v1.5</code> plus two additional commits after that release tag.
+                      This suffix is not used on <code>main</code>.
                     </p>
                   </div>
                 </div>

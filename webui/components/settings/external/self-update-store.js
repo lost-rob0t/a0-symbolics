@@ -612,7 +612,7 @@ const model = {
   },
 
   parseSelectorTag(value) {
-    const match = /^v(\d+)\.(\d+)$/.exec((value || "").trim());
+    const match = /^a0s-v(\d+)\.(\d+)(?:\.(\d+))?$/.exec((value || "").trim());
     if (!match) return null;
     return [
       Number.parseInt(match[1], 10),
@@ -704,12 +704,12 @@ const model = {
     }
 
     if (!this.isLatestSelectorTag(this.form.tag) && !this.parseSelectorTag(this.form.tag)) {
-      this.error = "Release tag must use the format vX.Y.";
+      this.error = "Release tag must use the format a0s-vX.Y.";
       return;
     }
 
     if (!this.isLatestSelectorTag(this.form.tag) && !this.isSupportedSelectorTag(this.form.tag)) {
-      this.error = "Release tag must be v1.0 or newer.";
+      this.error = "Release tag must be a0s-v1.0 or newer.";
       return;
     }
 

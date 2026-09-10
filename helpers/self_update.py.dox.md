@@ -29,7 +29,10 @@
 - `get_default_backup_dir(repo_dir: str | Path | None=...) -> Path`
 - `get_repo_dir(repo_dir: str | Path | None=...) -> Path`
 - `get_repo_self_update_manager_path(repo_dir: str | Path | None=...) -> Path`
-- `_get_official_remote_url() -> str`
+- `_get_update_source_urls() -> list[str]`
+- `_upstream_source_override_enabled() -> bool`
+- `get_update_source_urls() -> list[str]`
+- `_list_remote_tags() -> list[str]`
 - `_run_git_raw(*args) -> str`
 - `_run_git(repo_dir: str | Path, *args) -> str`
 - `_normalize_describe_to_version(describe: str) -> str`
@@ -45,14 +48,27 @@
 - `_sort_branch_names(branches: list[str]) -> list[str]`
 - `_get_remote_branch_names() -> list[str]`
 - `_get_local_origin_branch_names(repo_dir: str | Path | None=...) -> list[str]`
-- Notable constants/configuration names: `OFFICIAL_REPO_AUTHOR`, `OFFICIAL_REPO_NAME`, `BRANCH_OPTIONS`, `SUPPORTED_BRANCHES`, `BACKUP_CONFLICT_POLICIES`, `MIN_SELECTOR_VERSION`, `REMOTE_BRANCH_TAG_CACHE_TTL_SECONDS`, `REMOTE_BRANCH_LIST_CACHE_TTL_SECONDS`, `UPDATE_FILE_PATH`, `STATUS_FILE_PATH`, `LOG_FILE_PATH`, `DURABLE_EXE_DIR`.
+- Notable constants/configuration names: `UPSTREAM_SOURCE_OVERRIDE_ENV`, `UPDATE_SOURCE_OVERRIDE_ENV`, `BRANCH_OPTIONS`, `SUPPORTED_BRANCHES`, `BACKUP_CONFLICT_POLICIES`, `MIN_SELECTOR_VERSION`, `REMOTE_BRANCH_TAG_CACHE_TTL_SECONDS`, `REMOTE_BRANCH_LIST_CACHE_TTL_SECONDS`, `UPDATE_FILE_PATH`, `STATUS_FILE_PATH`, `LOG_FILE_PATH`, `DURABLE_EXE_DIR`.
 
 ## Runtime Contracts
 
+- a0-symbolics update policy: stable installations resolve update sources from
+  `maint/upstream.toml` `[distribution]` (env `A0_SELF_UPDATE_REMOTE_URL`
+  overrides the primary URL). Raw upstream Agent Zero is refused as an update
+  source unless `A0_ALLOW_UPSTREAM_SELF_UPDATE=1` is set for development
+  checkouts; see `get_update_source_urls`.
+- Release tags use the distribution prefix from `helpers.symbolics_release`
+  (`a0s-vX.Y[.Z]`); bare upstream tags like `v2.12` are rejected.
+- `get_update_info` includes a `symbolics` identity block with
+  `symbolics_version`, `upstream_tag`, `upstream_commit`, and
+  `symbolics_commit`.
+- The durable updater (`docker/run/fs/exe/self_update_manager.py`) enforces the
+  same source policy and additionally refuses any target commit that does not
+  carry the `maint/upstream.toml` distribution marker.
 - Helper modules own reusable framework APIs and must preserve public callers unless all callers, tests, and docs are updated together.
 - Update this file whenever public functions, classes, persistence behavior, path/security assumptions, side effects, or cross-module contracts change.
 - Observed side-effect areas: filesystem reads, filesystem writes, subprocess/runtime control, settings/state persistence.
-- Imported dependency areas include: `__future__`, `datetime`, `helpers`, `helpers.localization`, `os`, `pathlib`, `re`, `subprocess`, `tempfile`, `time`, `typing`.
+- Imported dependency areas include: `__future__`, `datetime`, `helpers`, `helpers.localization`, `helpers.symbolics_release`, `os`, `pathlib`, `re`, `subprocess`, `tempfile`, `time`, `typing`.
 
 ## Key Concepts
 
@@ -69,8 +85,9 @@
 
 - Run targeted tests for changed helper behavior; run security regressions for auth, filesystem, WebSocket, tunnel, upload, or secret-handling helpers.
 - Related tests observed by source search:
-  - `tests/test_office_document_store.py`
+  - `tests/test_self_update_policy.py`
   - `tests/test_self_update_tag_filter.py`
+  - `tests/test_self_update_runtime_sync.py`
 
 ## Child DOX Index
 
