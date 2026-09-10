@@ -11,6 +11,7 @@ docs focus on practical setup, screenshots, and user workflows.
 
 ## Quick Start
 
+- **[A0 Symbolics Runtime](symbolics-runtime.md):** Build, start, update, inspect, and verify this repository's bundled Symbolics runtime.
 - **[Quickstart Guide](quickstart.md):** Get up and running in 5 minutes with Agent Zero.
 - **[Agent Zero Launcher](guides/launcher.md):** Use the desktop app to set up Docker, install Agent Zero, open Instances, or connect a remote Instance.
 - **[First-Run Onboarding](guides/onboarding.md):** Choose Cloud, AI account, or Local access, then select main and utility models.
@@ -41,6 +42,7 @@ docs focus on practical setup, screenshots, and user workflows.
 
 ## Technical Reference
 
+- **[A0 Symbolics Runtime](symbolics-runtime.md):** Repository-native lifecycle, verification, persistent paths, and external API route shape.
 - **[DeepWiki for Agent Zero](https://deepwiki.com/agent0ai/agent-zero):** Architecture, Web UI internals, plugin lifecycle, backend APIs, deployment details, and source-linked explanations.
 - **[Architecture](developer/architecture.md):** Short local handoff to DeepWiki plus practical starting points.
 - **[Plugins](developer/plugins.md):** Compact plugin starting points and sharing checklist.
@@ -64,6 +66,7 @@ docs focus on practical setup, screenshots, and user workflows.
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+  - [A0 Symbolics Runtime](symbolics-runtime.md)
   - [Quickstart Guide](quickstart.md)
   - [Agent Zero Launcher](guides/launcher.md)
   - [First-Run Onboarding](guides/onboarding.md)
@@ -132,6 +135,7 @@ docs focus on practical setup, screenshots, and user workflows.
   - [Troubleshooting](guides/troubleshooting.md)
 
 - [Technical Reference](#technical-reference)
+  - [A0 Symbolics Runtime](symbolics-runtime.md)
   - [DeepWiki for Agent Zero](https://deepwiki.com/agent0ai/agent-zero)
   - [Architecture](developer/architecture.md)
   - [Plugins](developer/plugins.md)
@@ -150,10 +154,11 @@ docs focus on practical setup, screenshots, and user workflows.
 | Content type | Home |
 | --- | --- |
 | Setup, screenshots, and everyday workflows | These docs |
+| `a0-symbolics` repository runtime and verification | [A0 Symbolics Runtime](symbolics-runtime.md) |
 | Architecture and source-linked internals | [DeepWiki](https://deepwiki.com/agent0ai/agent-zero) |
 | Exact behavior | The current source code |
 | Community help and examples | Discord, Skool, GitHub discussions |
 
 ### Your journey with Agent Zero starts now!
 
-Ready to dive in? Start with the [Quickstart Guide](quickstart.md) for the fastest path to your first chat, or follow the [Installation Guide](setup/installation.md) for a detailed setup walkthrough.
+Ready to dive in? If you cloned this repository, start with [A0 Symbolics Runtime](symbolics-runtime.md). For the general upstream path, use the [Quickstart Guide](quickstart.md) or the [Installation Guide](setup/installation.md).

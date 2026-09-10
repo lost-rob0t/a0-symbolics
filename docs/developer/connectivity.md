@@ -20,15 +20,19 @@ docs should not duplicate the full connectivity architecture.
 
 You can find your API token in Agent Zero under **Settings > External Services**.
 
+The HTTP dispatcher in `helpers/api.py` mounts handlers at `/api/<path>`.
+Built-in handler filenames are part of that path, so `api/api_message.py` is
+served as `/api/api_message`, not `/api_message`.
+
 Common external endpoints include:
 
 | Endpoint | Use it for |
 | --- | --- |
-| `POST /api_message` | Send a message to Agent Zero. |
-| `GET/POST /api_log_get` | Read chat logs. |
-| `POST /api_terminate_chat` | Stop a running chat. |
-| `POST /api_reset_chat` | Reset a chat. |
-| `POST /api_files_get` | Retrieve files. |
+| `POST /api/api_message` | Send a message to Agent Zero. |
+| `GET/POST /api/api_log_get` | Read chat logs. |
+| `POST /api/api_terminate_chat` | Stop and remove a running chat. |
+| `POST /api/api_reset_chat` | Reset a chat while keeping its context ID. |
+| `POST /api/api_files_get` | Retrieve files. |
 
 External API calls use the `X-API-KEY` header.
 
@@ -52,4 +56,5 @@ that way.
 - [MCP Setup](../guides/mcp-setup.md)
 - [A2A Setup](../guides/a2a-setup.md)
 - [API Integration](../guides/api-integration.md)
+- [A0 Symbolics Runtime](../symbolics-runtime.md)
 - [DeepWiki for Agent Zero](https://deepwiki.com/agent0ai/agent-zero)
