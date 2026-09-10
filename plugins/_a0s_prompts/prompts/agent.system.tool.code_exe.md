@@ -95,31 +95,3 @@ examples:
     }
 }
 ~~~
-
-2 python snippet
-~~~json
-{
-  "thoughts": ["A short Python check is faster than using the shell."],
-  "headline": "Running Python snippet",
-  "tool_name": "code_execution_tool",
-  "tool_args": {
-    "runtime": "python",
-    "session": 0,
-    "reset": false,
-    "code": "import os\nprint(os.getcwd())"
-  }
-}
-~~~
-
-3 wait for running output
-~~~json
-{
-  "thoughts": ["The previous command is still running, so I should poll for output."],
-  "headline": "Waiting for command output",
-  "tool_name": "code_execution_tool",
-  "tool_args": {
-    "runtime": "output",
-    "session": 0
-  }
-}
-~~~

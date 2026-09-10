@@ -1,0 +1,680 @@
+#!/usr/bin/env python3
+"""Upstream synchronization and fork-surface tooling for a0-symbolics.
+
+Reads maint/upstream.toml as the single source of truth for the immutable
+upstream base, then provides small deterministic maintenance commands:
+
+    scripts/upstream-sync status
+    scripts/upstream-sync plan <tag>
+    scripts/upstream-sync prepare <tag> [--squash] [--dir PATH]
+    scripts/upstream-sync resume [--dir PATH]
+    scripts/upstream-sync verify [--repo PATH] [--full]
+    scripts/upstream-sync fork-surface [--base REF] [--ref REF] [--write]
+
+Never modifies the primary worktree's checked-out state; replay happens in an
+isolated temporary git worktree under tmp/upstream-replay/.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+MAINT_DIR = REPO_ROOT / "maint"
+METADATA_FILE = MAINT_DIR / "upstream.toml"
+FORK_SURFACE_FILE = MAINT_DIR / "fork-surface.toml"
+REPORTS_DIR = MAINT_DIR / "reports"
+RESOLUTIONS_DIR = MAINT_DIR / "resolutions"
+UPSTREAM_REMOTE = "upstream"
+
+VERIFY_TEST_SET = [
+    "tests/test_upstream_sync.py",
+    "tests/test_self_update_policy.py",
+    "tests/test_self_update_tag_filter.py",
+    "tests/test_self_update_runtime_sync.py",
+    "tests/test_responses_architecture.py",
+    "tests/test_tool_choice_drop_retry.py",
+    "tests/test_default_prompt_budget.py",
+    "tests/test_context_debloat_defaults.py",
+    "tests/test_defer_lifecycle.py",
+    "tests/test_task_scheduler_runs.py",
+    "tests/test_prolog_rlm_pin.py",
+    "tests/test_http_auth_csrf.py",
+]
+
+# Explicit classification for upstream-owned files modified by Symbolics.
+# Everything else defaults to heuristics: see classify_fork_delta().
+CORE_PATCH_NOTES = {
+    "agent.py": (
+        "unavoidable-core-patch",
+        "map text-extracted tool-request names through the responses name map; upstream only maps native function calls",
+    ),
+    "helpers/extract_tools.py": (
+        "unavoidable-core-patch",
+        "OpenAI-style XML <invoke> tool-request parser for text-based Responses turns; upstream parses JSON roots only",
+    ),
+    "helpers/litellm_transport.py": (
+        "unavoidable-core-patch",
+        "drop forced tool_choice retry and provider reasoning-effort normalization; no transport extension hook exists",
+    ),
+    "helpers/self_update.py": (
+        "compatibility-hook",
+        "distribution-owned update policy: source resolution, a0s- release tags, symbolics release identity",
+    ),
+    "models.py": (
+        "unavoidable-core-patch",
+        "mid-stream tool_choice failure recovery inside LiteLLMChatWrapper retry loop; wrapper-internal, no hook",
+    ),
+    "helpers/defer.py": (
+        "upstreamable",
+        "DeferredTask wait_finished/settled/generation lifecycle hardening; generic robustness worth an upstream PR",
+    ),
+    "helpers/state_snapshot.py": (
+        "symbolic-runtime",
+        "scheduler run_id resolution and run metadata in state snapshots for run chaining",
+    ),
+    "helpers/ws.py": (
+        "obsolete",
+        "upstream added the same detached-manager guard; drop during replay",
+    ),
+    "plugins/_editor/webui/editor-panel.html": (
+        "obsolete",
+        "upstream completed the x-icon migration; drop during replay",
+    ),
+    "conf/model_providers.yaml": (
+        "symbolic-runtime",
+        "OpenRouter forced to Responses API mode; deliberate Symbolics provider policy contradicting the upstream chat default",
+    ),
+    "helpers/extract_tools.py.dox.md": ("upstreamable", "DOX for the XML tool-request parser"),
+    "helpers/litellm_transport.py.dox.md": ("upstreamable", "DOX for tool_choice retry policy"),
+    "helpers/defer.py.dox.md": ("upstreamable", "DOX for deferred task lifecycle"),
+    "helpers/state_snapshot.py.dox.md": ("symbolic-runtime", "DOX for scheduler run fields"),
+    "helpers/ws.py.dox.md": ("obsolete", "upstream has the same guard"),
+    "prompts/agent.system.main.solving.md": (
+        "plugin",
+        "prompt debloat now shipped via the _a0s_prompts overlay plugin",
+    ),
+    "plugins/_code_execution/prompts/agent.system.tool.code_exe.md": (
+        "plugin",
+        "tool-prompt trim moved into the _a0s_prompts overlay plugin",
+    ),
+    "agents/agent0/prompts/agent.system.main.role.md": (
+        "plugin",
+        "persona positioning moved into the _a0s_prompts overlay plugin",
+    ),
+    "agents/developer/prompts/agent.system.main.specifics.md": (
+        "plugin",
+        "persona positioning moved into the _a0s_prompts overlay plugin",
+    ),
+    "agents/hacker/prompts/agent.system.main.specifics.md": (
+        "plugin",
+        "persona positioning moved into the _a0s_prompts overlay plugin",
+    ),
+    "agents/researcher/prompts/agent.system.main.specifics.md": (
+        "plugin",
+        "persona positioning moved into the _a0s_prompts overlay plugin",
+    ),
+    "extensions/python/message_loop_prompts_after/_75_include_workdir_extras.py": (
+        "compatibility-hook",
+        "CI workdir fallback; 5-line guard, candidate to upstream",
+    ),
+    "plugins/_promptinclude/extensions/python/system_prompt/_16_promptinclude.py": (
+        "upstreamable",
+        "bounded include defaults; plugin-local change, candidate to upstream",
+    ),
+    "webui/components/sidebar/chats/chats-store.js": (
+        "upstreamable",
+        "client-side chat search; additive store feature",
+    ),
+    "webui/js/messages.js": (
+        "upstreamable",
+        "scroll-sequence guard during streaming renders; additive UX fix",
+    ),
+}
+
+DIR_CATEGORIES = [
+    ("plugins/", "plugin"),
+    ("extensions/", "extension"),
+    ("android/", "packaging"),
+    ("docker/", "packaging"),
+    ("nix/", "packaging"),
+    ("scripts/", "packaging"),
+    (".github/", "packaging"),
+    ("skills/", "symbolic-runtime"),
+    ("rage/", "symbolic-runtime"),
+    ("docs/", "symbolic-runtime"),
+    ("tests/", "symbolic-runtime"),
+    ("helpers/", "symbolic-runtime"),
+    ("api/", "symbolic-runtime"),
+    ("tools/", "symbolic-runtime"),
+    ("webui/", "symbolic-runtime"),
+]
+
+
+def run_git(*args: str, cwd: Path | None = None, check: bool = True) -> str:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=str(cwd) if cwd else None,
+        check=check,
+        text=True,
+        capture_output=True,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+    )
+    return completed.stdout.strip()
+
+
+def load_metadata(path: Path = METADATA_FILE) -> dict:
+    if not path.exists():
+        raise SystemExit(f"Missing {path}; the canonical upstream metadata is required.")
+    import tomllib
+
+    with open(path, "rb") as handle:
+        return tomllib.load(handle)
+
+
+def upstream_ref(metadata: dict) -> dict:
+    upstream = metadata["upstream"]
+    return {
+        "repository": upstream["repository"],
+        "tag": upstream["tag"],
+        "commit": upstream["commit"],
+    }
+
+
+def ensure_upstream_remote() -> None:
+    remotes = run_git("remote")
+    if UPSTREAM_REMOTE not in remotes.split():
+        run_git("remote", "add", UPSTREAM_REMOTE, upstream_ref(load_metadata())["repository"])
+    run_git("fetch", UPSTREAM_REMOTE, "--tags", "--prune", "--quiet")
+
+
+def resolve_tag(tag: str) -> str:
+    commit = run_git("rev-parse", "--verify", "--quiet", f"{tag}^{{commit}}")
+    if not commit:
+        raise SystemExit(f"Tag {tag} not found in {UPSTREAM_REMOTE}; run 'plan' to fetch upstream first.")
+    return commit
+
+
+def repo_head() -> str:
+    return run_git("rev-parse", "HEAD")
+
+
+def is_dirty() -> bool:
+    return bool(run_git("status", "--porcelain", "--untracked-files=no"))
+
+
+def changed_files(a: str, b: str) -> list[str]:
+    return run_git("diff", "--name-only", a, b).splitlines()
+
+
+def file_exists_in(ref: str, path: str) -> bool:
+    probe = subprocess.run(
+        ["git", "cat-file", "-e", f"{ref}:{path}", "--"],
+        capture_output=True,
+        text=True,
+    )
+    return probe.returncode == 0
+
+
+def fork_delta_files(base: str, ref: str) -> tuple[list[str], list[str]]:
+    """Return (modified existing, added) files between base and ref."""
+    modified: list[str] = []
+    added: list[str] = []
+    for line in run_git("diff", "--name-status", base, ref).splitlines():
+        status, _, path = line.partition("\t")
+        if path.startswith("->"):
+            path = path.split("-> ")[-1]
+        if status.startswith("A"):
+            added.append(path)
+        else:
+            modified.append(path)
+    return modified, added
+
+
+def delta_numstat(a: str, b: str) -> dict[str, tuple[int, int]]:
+    result: dict[str, tuple[int, int]] = {}
+    for line in run_git("diff", "--numstat", a, b).splitlines():
+        added, removed, path = line.split("\t")
+        result[path] = (int(added) if added != "-" else 0, int(removed) if removed else 0)
+    return result
+
+
+def classify_fork_delta(path: str, base: str) -> tuple[str, str]:
+    override = CORE_PATCH_NOTES.get(path)
+    if override:
+        return override
+    if not file_exists_in(base, path):
+        for prefix, category in DIR_CATEGORIES:
+            if path.startswith(prefix):
+                return category, "Symbolics-owned addition"
+        return "symbolic-runtime", "Symbolics-owned addition"
+    return "unavoidable-core-patch", "modifies an upstream-owned file"
+
+
+def latest_upstream_tag() -> str:
+    tags = run_git("tag", "--sort=-v:refname").splitlines()
+    return next((t for t in tags if t.startswith("v")), "")
+
+
+def fork_surface(base: str | None, ref: str | None) -> dict:
+    base = base or upstream_ref(load_metadata())["commit"]
+    ref = ref or repo_head()
+    modified, added = fork_delta_files(base, ref)
+    upstream_current = resolve_tag(latest_upstream_tag()) if latest_upstream_tag() else ""
+    upstream_modified, upstream_added = fork_delta_files(base, upstream_current) if upstream_current else ([], [])
+    # Upstream-owned = vendor files that Symbolics modifies; upstream's own
+    # delta from the recorded base marks the conflict-prone overlap.
+    upstream_owned = sorted(p for p in modified if file_exists_in(base, p))
+    upstream_overlap = sorted(set(upstream_owned) & (set(upstream_modified) | set(upstream_added)))
+    numstat = delta_numstat(base, ref)
+    entries = []
+    counts: dict[str, int] = {}
+    loc = 0
+    for path in sorted(set(modified) | set(added)):
+        klass, note = classify_fork_delta(path, base)
+        added_loc, removed_loc = numstat.get(path, (0, 0))
+        counts[klass] = counts.get(klass, 0) + 1
+        if klass in ("unavoidable-core-patch", "compatibility-hook"):
+            loc += added_loc + removed_loc
+        entries.append({"path": path, "class": klass, "note": note, "added": added_loc, "removed": removed_loc})
+    return {
+        "base": base,
+        "ref": ref,
+        "files_changed": len(entries),
+        "files_added": len(added),
+        "upstream_owned_modified": len(upstream_owned),
+        "upstream_owned_files": upstream_owned,
+        "loc_added": sum(v[0] for v in numstat.values()),
+        "loc_removed": sum(v[1] for v in numstat.values()),
+        "core_patch_loc": loc,
+        "core_patches": counts.get("unavoidable-core-patch", 0),
+        "hotspots": [p for p in upstream_owned if p in HOTSPOT_FILES],
+        "counts": counts,
+        "entries": entries,
+    }
+
+
+HOTSPOT_FILES = {
+    "agent.py",
+    "models.py",
+    "helpers/extract_tools.py",
+    "helpers/litellm_transport.py",
+    "helpers/self_update.py",
+    "helpers/state_snapshot.py",
+    "conf/model_providers.yaml",
+    "webui/js/messages.js",
+}
+
+
+def write_fork_surface_toml(surface: dict) -> str:
+    lines = [
+        "# Generated by scripts/upstream-sync fork-surface. Do not edit by hand.",
+        f'# base = "{surface["base"]}"',
+        f'# ref = "{surface["ref"]}"',
+        "",
+        "[summary]",
+        f'files_changed = {surface["files_changed"]}',
+        f'upstream_owned_modified = {surface["upstream_owned_modified"]}',
+        f'loc_added = {surface["loc_added"]}',
+        f'loc_removed = {surface["loc_removed"]}',
+        f'core_patch_loc = {surface["core_patch_loc"]}',
+        f'core_patches = {surface["core_patches"]}',
+        f'hotspots = {json.dumps(surface["hotspots"])}',
+        "",
+        "[counts]",
+    ]
+    for klass, count in sorted(surface["counts"].items()):
+        lines.append(f'{klass} = {count}')
+    lines.append("")
+    lines.append("[upstream_owned_files]")
+    for path in surface["upstream_owned_files"]:
+        entry = next(e for e in surface["entries"] if e["path"] == path)
+        note = entry["note"].replace('"', "'")
+        lines.append(f'"{path}" = {{ class = "{entry["class"]}", note = "{note}" }}')
+    return "\n".join(lines) + "\n"
+
+
+def cmd_fork_surface(args: argparse.Namespace) -> None:
+    surface = fork_surface(args.base, args.ref)
+    output = write_fork_surface_toml(surface)
+    if args.write:
+        FORK_SURFACE_FILE.write_text(output, encoding="utf-8")
+        print(f"wrote {FORK_SURFACE_FILE}")
+    print(json.dumps({k: v for k, v in surface.items() if k != "entries"}, indent=2))
+
+
+def cmd_status(args: argparse.Namespace) -> None:
+    meta = load_metadata()
+    base = upstream_ref(meta)
+    ensure_upstream_remote()
+    tags = run_git("tag", "--sort=-v:refname").splitlines()
+    latest = next((t for t in tags if t.startswith("v")), "")
+    latest_commit = resolve_tag(latest) if latest else ""
+    head = repo_head()
+    sym_modified, sym_added = fork_delta_files(base["commit"], head)
+    print(
+        json.dumps(
+            {
+                "base_tag": base["tag"],
+                "base_commit": base["commit"],
+                "head": head,
+                "latest_upstream_tag": latest,
+                "latest_upstream_commit": latest_commit,
+                "upstream_commits_since_base": int(run_git("rev-list", "--count", f"{base['commit']}..{latest_commit}") or 0) if latest_commit else 0,
+                "fork_delta_files": len(sym_modified) + len(sym_added),
+                "dirty": is_dirty(),
+            },
+            indent=2,
+        )
+    )
+
+
+def cmd_plan(args: argparse.Namespace) -> None:
+    meta = load_metadata()
+    base = upstream_ref(meta)
+    ensure_upstream_remote()
+    new_commit = resolve_tag(args.tag)
+    upstream_delta = run_git("diff", "--name-status", base["commit"], new_commit).splitlines()
+    sym_modified, sym_added = fork_delta_files(base["commit"], repo_head())
+    upstream_files = {line.split("\t")[-1].split("-> ")[-1] for line in upstream_delta}
+    overlap = sorted(set(sym_modified) & upstream_files)
+    conflicts_preview = [p for p in overlap if p in HOTSPOT_FILES]
+    report = {
+        "old_base": {"tag": base["tag"], "commit": base["commit"]},
+        "new_base": {"tag": args.tag, "commit": new_commit},
+        "upstream_changed_files": len(upstream_files),
+        "symbolics_modified_files": len(sym_modified),
+        "overlapping_files": overlap,
+        "likely_conflict_hotspots": conflicts_preview,
+        "upstream_commits": run_git("rev-list", "--count", f"{base['commit']}..{new_commit}"),
+    }
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    out = REPORTS_DIR / f"plan-{args.tag}.json"
+    out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(report, indent=2))
+    print(f"\nreport: {out}")
+
+
+def prepare_worktree(tag: str, new_commit: str, dir_path: Path) -> tuple[Path, str]:
+    if dir_path.exists() and (dir_path / ".git").exists():
+        existing = run_git("rev-parse", "--abbrev-ref", "HEAD", cwd=dir_path)
+        print(f"reusing existing replay worktree {dir_path} on {existing}")
+        return dir_path, existing
+    if dir_path.exists():
+        raise SystemExit(f"{dir_path} exists but is not a git worktree; remove it first.")
+    dir_path.parent.mkdir(parents=True, exist_ok=True)
+    run_git("worktree", "add", "--detach", str(dir_path), new_commit)
+    branch = f"a0s-replay-{tag.lstrip('v').replace('.', '-')}"
+    run_git("checkout", "-b", branch, "--quiet", cwd=dir_path)
+    # rerere records recurring conflict resolutions; reuse stays reviewable.
+    run_git("config", "rerere.enabled", "true", cwd=dir_path)
+    return dir_path, branch
+
+
+def series_commits(base: str, head: str) -> list[str]:
+    return run_git("rev-list", "--reverse", "--no-merges", f"{base}..{head}").splitlines()
+
+
+def conflict_report(worktree: Path, tag: str, sha: str, state_dir: Path) -> Path:
+    conflicted = run_git("diff", "--name-only", "--diff-filter=U", cwd=worktree).splitlines()
+    lines = [f"# Upstream replay conflicts: {tag} at {sha[:12]}", ""]
+    notes = RESOLUTIONS_DIR / tag
+    if notes.exists():
+        lines.append(f"Recorded resolutions: {notes} (apply, verify, then commit)")
+        lines.append("")
+    for path in conflicted:
+        lines.append(f"## {path}")
+        lines.append("```")
+        lines.append(run_git("diff", "--", path, cwd=worktree))
+        lines.append("```")
+        lines.append("")
+    out = state_dir / f"conflicts-{sha[:12]}.md"
+    out.write_text("\n".join(lines), encoding="utf-8")
+    return out
+
+
+def replay_series(worktree: Path, commits: list[str], tag: str, state_dir: Path) -> tuple[bool, list[str]]:
+    state_file = state_dir / "state.json"
+    done: list[str] = []
+    if state_file.exists():
+        done = json.loads(state_file.read_text()).get("replayed", [])
+    # Trust the worktree log over the state file: manual resolutions outside
+    # this tool still count as replayed.
+    try:
+        bodies = run_git("log", "--format=%B", f"{tag}^{{commit}}..HEAD", cwd=worktree)
+        for line in bodies.splitlines():
+            line = line.strip()
+            if line.startswith("(cherry picked from commit ") and line.endswith(")"):
+                done.append(line[len("(cherry picked from commit "):-1].strip())
+    except Exception:
+        pass
+    remaining = [c for c in commits if c not in set(done)]
+    replayed: list[str] = list(done)
+    skipped: list[str] = []
+    for sha in remaining:
+        pick_state = Path(run_git("rev-parse", "--git-dir", cwd=worktree)) / "CHERRY_PICK_HEAD"
+        if pick_state.exists():
+            print(f"A cherry-pick is already in progress in {worktree}; resolve it first.")
+            return False, replayed
+        result = subprocess.run(
+            ["git", "cherry-pick", "-x", sha],
+            cwd=str(worktree),
+            text=True,
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            replayed.append(sha)
+            state_file.write_text(
+                json.dumps({"replayed": replayed, "tag": tag, "worktree": str(worktree)}, indent=1)
+            )
+            continue
+        combined = (result.stdout or "") + (result.stderr or "")
+        if "now empty" in combined:
+            subprocess.run(
+                ["git", "cherry-pick", "--skip"],
+                cwd=str(worktree),
+                capture_output=True,
+            )
+            skipped.append(sha)
+            state_file.write_text(
+                json.dumps(
+                    {"replayed": replayed, "skipped": skipped, "tag": tag, "worktree": str(worktree)},
+                    indent=1,
+                )
+            )
+            print(f"skipped empty pick {sha[:12]} (content already present upstream or in overlay)")
+            continue
+        report = conflict_report(worktree, tag, sha, state_dir)
+        state_file.write_text(
+            json.dumps(
+                {"replayed": replayed, "tag": tag, "worktree": str(worktree), "stopped_at": sha},
+                indent=1,
+            )
+        )
+        print(f"CONFLICT replaying {sha[:12]}: {run_git('log', '-1', '--format=%s', sha)}")
+        print(f"conflict report: {report}")
+        print("resolve in the worktree, commit, then re-run: scripts/upstream-sync resume")
+        return False, replayed
+    return True, replayed
+
+
+def cmd_prepare(args: argparse.Namespace) -> None:
+    if is_dirty():
+        raise SystemExit("Primary worktree is dirty; upstream replay requires a clean checkout.")
+    meta = load_metadata()
+    base = upstream_ref(meta)
+    ensure_upstream_remote()
+    new_commit = resolve_tag(args.tag)
+    head = repo_head()
+    dir_path = Path(args.dir) if args.dir else REPO_ROOT / "tmp" / "upstream-replay" / args.tag
+    worktree, branch = prepare_worktree(args.tag, new_commit, dir_path)
+    commits = series_commits(base["commit"], head)
+    state_dir = MAINT_DIR / "reports" / f"prepare-{args.tag}"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    if args.squash:
+        patch = run_git("diff", base["commit"], head)
+        result = subprocess.run(
+            ["git", "apply", "--3way", "--index", "-"],
+            cwd=str(worktree),
+            input=patch,
+            text=True,
+            capture_output=True,
+        )
+        if result.returncode != 0:
+            print(f"squash apply failed ({result.returncode}); worktree {worktree}")
+            report = conflict_report(worktree, args.tag, "squash", state_dir)
+            print(f"conflict report: {report}")
+            return
+        run_git("commit", "-m", f"Squashed Symbolics overlay replayed onto {args.tag} ({new_commit[:12]})",
+                "-q", cwd=worktree)
+        done = True
+        replayed = ["squash"]
+        (state_dir / "state.json").write_text(
+            json.dumps({"replayed": replayed, "tag": args.tag, "worktree": str(worktree), "completed": True}, indent=1)
+        )
+    else:
+        done, replayed = replay_series(worktree, commits, args.tag, state_dir)
+        if not done:
+            return
+    range_diff = run_git(
+        "range-diff",
+        f"{base['commit']}..{head}",
+        f"{new_commit}..{branch}",
+        cwd=REPO_ROOT,
+    )
+    report = {
+        "old_base": base,
+        "new_base": {"tag": args.tag, "commit": new_commit},
+        "worktree": str(worktree),
+        "branch": branch,
+        "replayed": replayed,
+        "series_commits": len(commits),
+        "range_diff_lines": len(range_diff.splitlines()),
+    }
+    (state_dir / "replay-report.json").write_text(json.dumps(report, indent=2) + "\n")
+    (state_dir / "range-diff.txt").write_text(range_diff + "\n")
+    print(json.dumps(report, indent=2))
+    print(f"\nnext: scripts/upstream-sync verify --repo {worktree}")
+
+
+def cmd_resume(args: argparse.Namespace) -> None:
+    meta = load_metadata()
+    base = upstream_ref(meta)
+    head = repo_head()
+    state_file = MAINT_DIR / "reports" / f"prepare-{args.tag}" / "state.json"
+    if not state_file.exists():
+        raise SystemExit(f"No replay state for {args.tag}; run prepare first.")
+    state = json.loads(state_file.read_text())
+    worktree = Path(args.repo) if args.repo else Path(state["worktree"])
+    commits = series_commits(base["commit"], head)
+    done, replayed = replay_series(worktree, commits, args.tag, state_file.parent)
+    if not done:
+        return
+    branch = run_git("rev-parse", "--abbrev-ref", "HEAD", cwd=worktree)
+    new_commit = run_git("rev-parse", f"{args.tag}^{{commit}}")
+    range_diff = run_git("range-diff", f"{base['commit']}..{head}", f"{new_commit}..{branch}", cwd=REPO_ROOT)
+    (state_file.parent / "range-diff.txt").write_text(range_diff + "\n")
+    state.update({"replayed": replayed, "completed": True, "branch": branch})
+    state_file.write_text(json.dumps(state, indent=1))
+    print(f"replay complete in {worktree} on {branch}")
+
+
+def cmd_verify(args: argparse.Namespace) -> None:
+    repo = Path(args.repo).resolve() if args.repo else REPO_ROOT
+    results: dict[str, dict] = {}
+    test_set = [t for t in VERIFY_TEST_SET if (repo / t).exists()]
+    pytest_run = subprocess.run(
+        [sys.executable, "-m", "pytest", *test_set, "-q", "--no-header"],
+        cwd=str(repo),
+        text=True,
+        capture_output=True,
+    )
+    results["pytest"] = {
+        "exit": pytest_run.returncode,
+        "tail": pytest_run.stdout.strip().splitlines()[-12:],
+    }
+    import_smoke = subprocess.run(
+        [sys.executable, "-c",
+         "import agent, models, helpers.self_update, helpers.symbolics_release; print('imports ok')"],
+        cwd=str(repo),
+        text=True,
+        capture_output=True,
+    )
+    results["import_smoke"] = {"exit": import_smoke.returncode, "output": import_smoke.stdout.strip() or import_smoke.stderr.strip()[-400:]}
+    plugin_probe = subprocess.run(
+        [sys.executable, "-c",
+         "from helpers import plugins; names = plugins.get_plugins_list(); assert '_a0s_prompts' in names and '_prolog_rlm' in names; print('plugins ok')"],
+        cwd=str(repo),
+        text=True,
+        capture_output=True,
+    )
+    results["plugins"] = {"exit": plugin_probe.returncode, "output": plugin_probe.stdout.strip() or plugin_probe.stderr.strip()[-400:]}
+    prolog = subprocess.run(["swipl", "--version"], capture_output=True, text=True)
+    results["prolog_runtime"] = {"exit": prolog.returncode, "available": prolog.returncode == 0}
+    if args.full:
+        docker_available = shutil.which("docker") is not None
+        if docker_available:
+            compose = subprocess.run(
+                ["docker", "compose", "--project-name", "a0s-verify", "-f", "docker/symbolics/compose.yml.example", "config", "--quiet"],
+                cwd=str(repo), text=True, capture_output=True,
+            )
+            results["docker_compose"] = {"exit": compose.returncode, "error": compose.stderr.strip()[-300:]}
+        else:
+            results["docker_compose"] = {"exit": -1, "error": "docker not available"}
+        nix_available = shutil.which("nix") is not None
+        if nix_available:
+            nix = subprocess.run(["nix", "flake", "metadata", "--json"], cwd=str(repo), text=True, capture_output=True)
+            results["nix_flake"] = {"exit": nix.returncode, "error": nix.stderr.strip()[-300:]}
+        else:
+            results["nix_flake"] = {"exit": -1, "error": "nix not available"}
+    ok = all(v.get("exit", 1) == 0 for k, v in results.items() if k not in ("prolog_runtime",))
+    results["passed"] = ok
+    print(json.dumps(results, indent=2))
+    sys.exit(0 if ok else 1)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("status", help="show base, HEAD, and latest upstream state")
+    p.set_defaults(func=cmd_status)
+
+    p = sub.add_parser("plan", help="resolve a tag and report the upstream delta and overlap")
+    p.add_argument("tag")
+    p.set_defaults(func=cmd_plan)
+
+    p = sub.add_parser("prepare", help="replay the Symbolics series onto a new upstream base in an isolated worktree")
+    p.add_argument("tag")
+    p.add_argument("--dir", default="", help="worktree location (default tmp/upstream-replay/<tag>)")
+    p.add_argument("--squash", action="store_true", help="replay the whole overlay as one squashed commit")
+    p.set_defaults(func=cmd_prepare)
+
+    p = sub.add_parser("resume", help="continue a conflicted replay after resolutions are committed")
+    p.add_argument("tag")
+    p.add_argument("--repo", default="", help="worktree path if not the default")
+    p.set_defaults(func=cmd_resume)
+
+    p = sub.add_parser("verify", help="run compatibility gates in a checkout")
+    p.add_argument("--repo", default="", help="checkout to verify (default: this repo)")
+    p.add_argument("--full", action="store_true", help="also run docker compose and nix checks when available")
+    p.set_defaults(func=cmd_verify)
+
+    p = sub.add_parser("fork-surface", help="measure and classify the fork surface against the base")
+    p.add_argument("--base", default="")
+    p.add_argument("--ref", default="")
+    p.add_argument("--write", action="store_true", help="write maint/fork-surface.toml")
+    p.set_defaults(func=cmd_fork_surface)
+
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

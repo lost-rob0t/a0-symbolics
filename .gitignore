@@ -52,3 +52,6 @@ agent_history.gif
 # Local a0-symbolics Docker configuration.
 # Copy docker/symbolics/compose.yml.example to this path and customize freely.
 /docker/symbolics/compose.yml
+
+# Local prolog verification state (never commit)
+.prolog/

@@ -1,0 +1,60 @@
+{
+  "old_base": {
+    "tag": "v2.10",
+    "commit": "b22a144bf59f15b1516084c9e7b88133ba92c8a9"
+  },
+  "new_base": {
+    "tag": "v2.12",
+    "commit": "b1cbd1f960a1a5c4482b324dcff4742aa67b7a51"
+  },
+  "upstream_changed_files": 508,
+  "symbolics_modified_files": 78,
+  "overlapping_files": [
+    "AGENTS.md",
+    "agent.py",
+    "conf/model_providers.yaml",
+    "docker/run/AGENTS.md",
+    "docker/run/fs/exe/self_update_manager.py",
+    "extensions/python/_functions/AGENTS.md",
+    "extensions/python/message_loop_prompts_after/_75_include_workdir_extras.py",
+    "extensions/python/system_prompt/AGENTS.md",
+    "helpers/defer.py",
+    "helpers/defer.py.dox.md",
+    "helpers/extract_tools.py",
+    "helpers/extract_tools.py.dox.md",
+    "helpers/litellm_transport.py",
+    "helpers/litellm_transport.py.dox.md",
+    "helpers/state_snapshot.py",
+    "helpers/state_snapshot.py.dox.md",
+    "helpers/ws.py",
+    "helpers/ws.py.dox.md",
+    "models.py",
+    "plugins/AGENTS.md",
+    "plugins/_editor/webui/editor-panel.html",
+    "plugins/_model_config/AGENTS.md",
+    "plugins/_promptinclude/extensions/python/system_prompt/_16_promptinclude.py",
+    "skills/AGENTS.md",
+    "tests/email_parser_test.py",
+    "tests/rate_limiter_test.py",
+    "tests/test_default_prompt_budget.py",
+    "tests/test_defer_lifecycle.py",
+    "tests/test_docker_release_plan.py",
+    "tests/test_http_auth_csrf.py",
+    "tests/test_responses_architecture.py",
+    "tests/test_self_update_tag_filter.py",
+    "tests/test_welcome_composer_static.py",
+    "webui/components/sidebar/AGENTS.md",
+    "webui/components/sidebar/chats/chats-store.js",
+    "webui/js/messages.js"
+  ],
+  "likely_conflict_hotspots": [
+    "agent.py",
+    "conf/model_providers.yaml",
+    "helpers/extract_tools.py",
+    "helpers/litellm_transport.py",
+    "helpers/state_snapshot.py",
+    "models.py",
+    "webui/js/messages.js"
+  ],
+  "upstream_commits": "192"
+}

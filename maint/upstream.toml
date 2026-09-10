@@ -1,0 +1,26 @@
+# Canonical upstream base and distribution identity for a0-symbolics.
+#
+# The upstream commit is immutable and authoritative. Never identify the base
+# by a mutable branch name. This file is updated only by scripts/upstream-sync
+# during an upstream synchronization, never by hand during normal work.
+
+[upstream]
+repository = "https://github.com/agent0ai/agent-zero.git"
+tag = "v2.10"
+commit = "b22a144bf59f15b1516084c9e7b88133ba92c8a9"
+
+[distribution]
+name = "a0-symbolics"
+# Release identity: a0s-<upstream-tag>.<series>, e.g. a0s-v2.10.1.
+release_prefix = "a0s-"
+series = 1
+# Stable runtime self-updates resolve against these Symbolics distribution
+# remotes (primary first, mirror fallback), never directly against upstream.
+repository = "https://git.starintel.actor/nsaspy/a0-symbolics.git"
+repository_mirror = "https://github.com/lost-rob0t/a0-symbolics.git"
+
+[selfupdate]
+# Stable installations must never replace tracked a0-symbolics source with raw
+# upstream Agent Zero. The durable updater additionally refuses any target
+# commit that does not carry maint/upstream.toml.
+allow_upstream_source = false
