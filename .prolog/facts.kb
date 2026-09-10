@@ -1,0 +1,6 @@
+% Ground facts and machine observations for this worktree.
+task('fix-broken-prs').
+repo_state('781ef8e5820213cb22d3c4ef4582c98770454c3e', 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855').
+research_required(true).
+brave_search('137a1357a5251b1a1dbc38143036616d11f0f94b14f45f9d94335c7c7fa8f4d5', 'ad240074a71b393c52ac083c3c607e7716d2e6a297422aae53e0369fd318b4e5', '2026-09-05T04:35:49Z', 'dd4e8257ed8079d3cc896fba52c6b9b333e9453e', '258d2aa24c97a9658404f55c304ed8c50060dfb3f8db3c64ef4c77745ec80156').
+observation('81b06f7bc8fafcee', command(['nix', 'develop', '--command', 'pytest', '-q', 'tests/test_log_secret_masking.py']), exit(2), 'abc7645133c3d35ec961062184d716431ec8a71887dedec6f13c83d7acdd4fe4', '781ef8e5820213cb22d3c4ef4582c98770454c3e', 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855').
