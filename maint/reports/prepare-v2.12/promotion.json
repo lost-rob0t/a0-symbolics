@@ -1,0 +1,23 @@
+{
+  "old_base": {
+    "tag": "v2.10",
+    "commit": "b22a144bf59f15b1516084c9e7b88133ba92c8a9"
+  },
+  "new_base": {
+    "tag": "v2.12",
+    "commit": "b1cbd1f960a1a5c4482b324dcff4742aa67b7a51"
+  },
+  "replay_branch": "a0s-replay-2-12",
+  "replay_head": "3217c5aa6838cd83a432c62d44af69c2e2f46c9c",
+  "fork_surface": {
+    "base": "b1cbd1f960a1a5c4482b324dcff4742aa67b7a51",
+    "ref": "3217c5aa6838cd83a432c62d44af69c2e2f46c9c",
+    "files_changed": 251,
+    "files_added": 174,
+    "upstream_owned_modified": 77,
+    "loc_added": 18616,
+    "loc_removed": 710,
+    "core_patch_loc": 2497,
+    "core_patches": 62
+  }
+}
