@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -11,7 +12,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from docker.symbolics import smoke
+# Load by path: a repo-local namespace dir cannot compete with an installed
+# regular `docker` package, so `import docker.symbolics` is unreliable.
+_spec = importlib.util.spec_from_file_location(
+    "a0s_symbolics_smoke", PROJECT_ROOT / "docker" / "symbolics" / "smoke.py"
+)
+assert _spec is not None and _spec.loader is not None
+smoke = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(smoke)
 
 
 class _Response:
