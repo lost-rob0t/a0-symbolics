@@ -29,45 +29,71 @@ def load_self_update_manager():
     return module
 
 
-def test_self_update_selector_tags_use_two_segments_and_v1_floor():
-    assert self_update.is_valid_selector_tag("v1.0")
-    assert self_update.is_valid_selector_tag("v12.34")
-    assert self_update.is_valid_selector_tag("v0.9")
-    assert self_update._is_selector_supported_tag("v1.0")
-    assert self_update._is_selector_supported_tag("v2.3")
+def test_self_update_selector_tags_use_distribution_prefix_and_v1_floor():
+    assert self_update.is_valid_selector_tag("a0s-v1.0")
+    assert self_update.is_valid_selector_tag("a0s-v12.34")
+    assert self_update.is_valid_selector_tag("a0s-v1.0.1")
+    assert self_update._is_selector_supported_tag("a0s-v1.0")
+    assert self_update._is_selector_supported_tag("a0s-v2.3")
+    assert not self_update.is_valid_selector_tag("v1.0")
+    assert not self_update.is_valid_selector_tag("v2.12")
     assert not self_update.is_valid_selector_tag("1.0")
-    assert not self_update.is_valid_selector_tag("v1")
-    assert not self_update.is_valid_selector_tag("v1.0.0")
-    assert not self_update.is_valid_selector_tag("v1.0.0.1")
-    assert not self_update._is_selector_supported_tag("v0.9")
-    assert not self_update._is_selector_supported_tag("v0.99")
+    assert not self_update.is_valid_selector_tag("a0s-v1")
+    assert not self_update.is_valid_selector_tag("a0s-v1.0.0.1")
+    assert not self_update._is_selector_supported_tag("a0s-v0.9")
+    assert not self_update._is_selector_supported_tag("a0s-v0.99")
 
 
 def test_self_update_selector_tags_are_sorted_numerically():
-    assert self_update._sort_selector_supported_tags(["v1.9", "v2.0", "v1.10"]) == [
-        "v2.0",
-        "v1.10",
-        "v1.9",
+    assert self_update._sort_selector_supported_tags(
+        ["a0s-v1.9", "a0s-v2.0", "a0s-v1.10"]
+    ) == [
+        "a0s-v2.0",
+        "a0s-v1.10",
+        "a0s-v1.9",
     ]
+
+
+def test_self_update_schedule_rejects_raw_upstream_tags(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        self_update,
+        "get_repo_version_info",
+        lambda _repo: {
+            "branch": "main",
+            "describe": "a0s-v1.0",
+            "short_tag": "a0s-v1.0",
+            "commit": "abc123",
+            "short_commit": "abc123",
+        },
+    )
+    monkeypatch.setattr(
+        self_update,
+        "get_available_branch_values",
+        lambda repo_dir=None: ["main"],
+    )
+
+    with pytest.raises(ValueError, match="must use the format a0s-vX.Y"):
+        self_update.schedule_update(
+            branch="main",
+            tag="v2.12",
+            backup_usr=True,
+            backup_path="",
+            backup_name="",
+            backup_conflict_policy="rename",
+            repo_dir=tmp_path,
+        )
 
 
 def test_self_update_branch_filter_prefers_remote_branch_tags(monkeypatch):
     monkeypatch.setattr(
-        self_update.git,
-        "get_remote_releases",
-        lambda author, repo: types.SimpleNamespace(
-            error="",
-            releases=[
-                types.SimpleNamespace(tag="v1.2"),
-                types.SimpleNamespace(tag="v1.1"),
-                types.SimpleNamespace(tag="v1.0"),
-            ],
-        ),
+        self_update,
+        "_list_remote_tags",
+        lambda: ["a0s-v1.2", "a0s-v1.1", "a0s-v1.0", "v2.12"],
     )
     monkeypatch.setattr(
         self_update,
         "_get_remote_branch_merged_tags",
-        lambda branch: {"v1.1", "v1.0"},
+        lambda branch: {"a0s-v1.1", "a0s-v1.0"},
     )
     monkeypatch.setattr(
         self_update,
@@ -78,7 +104,7 @@ def test_self_update_branch_filter_prefers_remote_branch_tags(monkeypatch):
     tags, error = self_update.get_available_tags("development")
 
     assert error == ""
-    assert tags == ["v1.1", "v1.0"]
+    assert tags == ["a0s-v1.1", "a0s-v1.0"]
 
 
 def test_self_update_available_branch_values_filter_prs_and_pin_main_first(monkeypatch):
@@ -183,7 +209,7 @@ def test_self_update_selector_tag_options_filter_to_current_major(monkeypatch):
         self_update,
         "get_available_tags",
         lambda branch, *, repo_dir=None, query="": (
-            ["v3.0", "v2.1", "v1.4", "v1.2"],
+            ["a0s-v3.0", "a0s-v2.1", "a0s-v1.4", "a0s-v1.2"],
             "",
         ),
     )
@@ -191,8 +217,8 @@ def test_self_update_selector_tag_options_filter_to_current_major(monkeypatch):
         self_update,
         "_get_branch_head_info",
         lambda branch, repo_dir=None: {
-            "describe": "v1.4-4-gabc1234",
-            "short_tag": "v1.4",
+            "describe": "a0s-v1.4-4-gabc1234",
+            "short_tag": "a0s-v1.4",
             "commit": "abc1234",
         },
     )
@@ -204,14 +230,14 @@ def test_self_update_selector_tag_options_filter_to_current_major(monkeypatch):
 
     tag_options, higher_major_versions, error = self_update.get_selector_tag_options(
         "main",
-        current_version="v1.2",
+        current_version="a0s-v1.2",
     )
 
     assert error == ""
     assert tag_options == [
-        {"value": "latest", "label": "latest (v1.4)"},
-        {"value": "v1.4", "label": "v1.4"},
-        {"value": "v1.2", "label": "v1.2"},
+        {"value": "latest", "label": "latest (a0s-v1.4)"},
+        {"value": "a0s-v1.4", "label": "a0s-v1.4"},
+        {"value": "a0s-v1.2", "label": "a0s-v1.2"},
     ]
     assert higher_major_versions == [2, 3]
 
@@ -221,7 +247,7 @@ def test_self_update_selector_tag_options_keep_main_latest_within_current_major(
         self_update,
         "get_available_tags",
         lambda branch, *, repo_dir=None, query="": (
-            ["v2.0", "v1.4", "v1.2"],
+            ["a0s-v2.0", "a0s-v1.4", "a0s-v1.2"],
             "",
         ),
     )
@@ -229,8 +255,8 @@ def test_self_update_selector_tag_options_keep_main_latest_within_current_major(
         self_update,
         "_get_branch_head_info",
         lambda branch, repo_dir=None: {
-            "describe": "v2.0",
-            "short_tag": "v2.0",
+            "describe": "a0s-v2.0",
+            "short_tag": "a0s-v2.0",
             "commit": "def5678",
         },
     )
@@ -242,14 +268,14 @@ def test_self_update_selector_tag_options_keep_main_latest_within_current_major(
 
     tag_options, higher_major_versions, error = self_update.get_selector_tag_options(
         "main",
-        current_version="v1.2",
+        current_version="a0s-v1.2",
     )
 
     assert error == ""
     assert tag_options == [
-        {"value": "latest", "label": "latest (v1.4)"},
-        {"value": "v1.4", "label": "v1.4"},
-        {"value": "v1.2", "label": "v1.2"},
+        {"value": "latest", "label": "latest (a0s-v1.4)"},
+        {"value": "a0s-v1.4", "label": "a0s-v1.4"},
+        {"value": "a0s-v1.2", "label": "a0s-v1.2"},
     ]
     assert higher_major_versions == [2]
 
@@ -259,7 +285,7 @@ def test_self_update_selector_tag_options_hide_latest_when_durable_updater_lacks
         self_update,
         "get_available_tags",
         lambda branch, *, repo_dir=None, query="": (
-            ["v1.4", "v1.2"],
+            ["a0s-v1.4", "a0s-v1.2"],
             "",
         ),
     )
@@ -267,8 +293,8 @@ def test_self_update_selector_tag_options_hide_latest_when_durable_updater_lacks
         self_update,
         "_get_branch_head_info",
         lambda branch, repo_dir=None: {
-            "describe": "v1.4-4-gabc1234",
-            "short_tag": "v1.4",
+            "describe": "a0s-v1.4-4-gabc1234",
+            "short_tag": "a0s-v1.4",
             "commit": "abc1234",
         },
     )
@@ -280,13 +306,13 @@ def test_self_update_selector_tag_options_hide_latest_when_durable_updater_lacks
 
     tag_options, higher_major_versions, error = self_update.get_selector_tag_options(
         "development",
-        current_version="v1.2",
+        current_version="a0s-v1.2",
     )
 
     assert error == ""
     assert tag_options == [
-        {"value": "v1.4", "label": "v1.4"},
-        {"value": "v1.2", "label": "v1.2"},
+        {"value": "a0s-v1.4", "label": "a0s-v1.4"},
+        {"value": "a0s-v1.2", "label": "a0s-v1.2"},
     ]
     assert higher_major_versions == []
 
@@ -297,9 +323,9 @@ def test_self_update_update_info_uses_current_branch_for_latest_version(monkeypa
         "get_repo_version_info",
         lambda _repo=None: {
             "branch": "main",
-            "describe": "v1.2",
-            "short_tag": "v1.2",
-            "display_version": "v1.2",
+            "describe": "a0s-v1.2",
+            "short_tag": "a0s-v1.2",
+            "display_version": "a0s-v1.2",
             "commit": "abc1234def",
             "short_commit": "abc1234",
         },
@@ -322,7 +348,7 @@ def test_self_update_update_info_uses_current_branch_for_latest_version(monkeypa
         self_update,
         "get_selector_tag_options",
         lambda branch, *, repo_dir=None, current_version=None: (
-            [{"value": "latest", "label": "latest (v1.4)"}],
+            [{"value": "latest", "label": "latest (a0s-v1.4)"}],
             [2] if branch == "main" else [],
             "",
         ),
@@ -330,7 +356,7 @@ def test_self_update_update_info_uses_current_branch_for_latest_version(monkeypa
     monkeypatch.setattr(
         self_update,
         "get_available_tags",
-        lambda branch, *, repo_dir=None, query="": (["v1.4", "v1.2"], ""),
+        lambda branch, *, repo_dir=None, query="": (["a0s-v1.4", "a0s-v1.2"], ""),
     )
     monkeypatch.setattr(
         self_update,
@@ -344,13 +370,13 @@ def test_self_update_update_info_uses_current_branch_for_latest_version(monkeypa
         "_get_branch_head_info",
         lambda branch, repo_dir=None: {
             "main": {
-                "describe": "v1.4",
-                "short_tag": "v1.4",
+                "describe": "a0s-v1.4",
+                "short_tag": "a0s-v1.4",
                 "commit": "def5678abcd",
             },
             "development": {
-                "describe": "v9.9-3-gfeedbee",
-                "short_tag": "v9.9",
+                "describe": "a0s-v9.9-3-gfeedbee",
+                "short_tag": "a0s-v9.9",
                 "commit": "feedbee1234",
             },
         }[branch],
@@ -361,9 +387,9 @@ def test_self_update_update_info_uses_current_branch_for_latest_version(monkeypa
     assert info["current_branch_latest"] == {
         "branch": "main",
         "supported": True,
-        "describe": "v1.4",
-        "short_tag": "v1.4",
-        "display_version": "v1.4",
+        "describe": "a0s-v1.4",
+        "short_tag": "a0s-v1.4",
+        "display_version": "a0s-v1.4",
         "commit": "def5678abcd",
         "short_commit": "def5678",
         "released_at": "",
@@ -371,14 +397,15 @@ def test_self_update_update_info_uses_current_branch_for_latest_version(monkeypa
     assert info["main_branch_latest"] == {
         "branch": "main",
         "supported": True,
-        "describe": "v1.4",
-        "short_tag": "v1.4",
-        "display_version": "v1.4",
+        "describe": "a0s-v1.4",
+        "short_tag": "a0s-v1.4",
+        "display_version": "a0s-v1.4",
         "commit": "def5678abcd",
         "short_commit": "def5678",
         "released_at": "",
     }
     assert info["major_upgrade_versions"] == [2]
+    assert info["symbolics"]["upstream_commit"]
 
 
 def test_self_update_main_branch_latest_stays_within_current_major(monkeypatch, tmp_path):
@@ -391,7 +418,7 @@ def test_self_update_main_branch_latest_stays_within_current_major(monkeypatch, 
         self_update,
         "get_available_tags",
         lambda branch, *, repo_dir=None, query="": (
-            ["v2.0", "v1.4", "v1.2"],
+            ["a0s-v2.0", "a0s-v1.4", "a0s-v1.2"],
             "",
         ),
     )
@@ -399,8 +426,8 @@ def test_self_update_main_branch_latest_stays_within_current_major(monkeypatch, 
         self_update,
         "_get_branch_head_info",
         lambda branch, repo_dir=None: {
-            "describe": "v2.0",
-            "short_tag": "v2.0",
+            "describe": "a0s-v2.0",
+            "short_tag": "a0s-v2.0",
             "commit": "feedbee1234",
             "released_at": "2026-03-30 15:15:50",
         },
@@ -409,23 +436,23 @@ def test_self_update_main_branch_latest_stays_within_current_major(monkeypatch, 
         self_update,
         "_run_git",
         lambda repo_dir, *args: {
-            ("rev-parse", "refs/tags/v1.4^{commit}"): "deadbeef1234",
+            ("rev-parse", "refs/tags/a0s-v1.4^{commit}"): "deadbeef1234",
         }[args],
     )
     monkeypatch.setattr(
         self_update,
         "_get_tag_release_time_in_repo",
-        lambda repo_dir, tag: "2026-02-01 08:30:00" if tag == "v1.4" else "",
+        lambda repo_dir, tag: "2026-02-01 08:30:00" if tag == "a0s-v1.4" else "",
     )
 
-    info = self_update.get_current_major_main_latest_info("v1.2", repo_dir=tmp_path)
+    info = self_update.get_current_major_main_latest_info("a0s-v1.2", repo_dir=tmp_path)
 
     assert info == {
         "branch": "main",
         "supported": True,
-        "describe": "v1.4",
-        "short_tag": "v1.4",
-        "display_version": "v1.4",
+        "describe": "a0s-v1.4",
+        "short_tag": "a0s-v1.4",
+        "display_version": "a0s-v1.4",
         "commit": "deadbeef1234",
         "short_commit": "deadbee",
         "released_at": "2026-02-01 08:30:00",
@@ -443,7 +470,7 @@ def test_self_update_remote_branch_head_info_resolves_release_time_before_temp_r
         if args[0] == "fetch":
             return ""
         if args[:3] == ("describe", "--tags", "--always"):
-            return "v1.5"
+            return "a0s-v1.5"
         if args[:2] == ("rev-parse", "refs/remotes/origin/main"):
             return "abc1234def5678"
         raise AssertionError(args)
@@ -458,8 +485,8 @@ def test_self_update_remote_branch_head_info_resolves_release_time_before_temp_r
     info = self_update._get_remote_branch_head_info("main")
 
     assert info == {
-        "describe": "v1.5",
-        "short_tag": "v1.5",
+        "describe": "a0s-v1.5",
+        "short_tag": "a0s-v1.5",
         "commit": "abc1234def5678",
         "released_at": "2026-03-30 15:15:50",
     }
@@ -497,8 +524,8 @@ def test_self_update_frontend_uses_preloaded_select():
     assert "await this.fetchTags();" in content
     assert '"Preparing update"' in content
     assert '"Saving the request and asking Agent Zero to restart."' in content
-    assert "Release tag must use the format vX.Y." in content
-    assert "Release tag must be v1.0 or newer." in content
+    assert "Release tag must use the format a0s-vX.Y." in content
+    assert "Release tag must be a0s-v1.0 or newer." in content
     assert "isLatestSelectorTag(value)" in content
     assert "this.isSelectableTag(this.form.tag)" in content
     assert "get mainBranchLatestTag()" in content
@@ -579,12 +606,13 @@ def test_self_update_modal_uses_standard_select_and_manual_backup():
     assert "Latest version" in content
     assert "Docker update guide" in content
     assert "https://www.agent-zero.ai/p/docs/get-started/" in content
-    assert "Version numbers use the format <code>vMAJOR.MINOR</code>" in content
+    assert "Version numbers use the format <code>a0s-vMAJOR.MINOR[.SERIES]</code>" in content
     assert "requires a newer" in content
     assert "Docker image." in content
     assert "minor release line" in content
     assert "Agent Zero self-update inside the existing image." in content
-    assert "On development branches you may also see versions like <code>v1.5+2</code>" in content
+    assert "never from raw" in content
+    assert "On development branches you may also see versions like <code>a0s-v1.5+2</code>" in content
     assert "This suffix is not used on" in content
     assert "Only versions from the current major release line are listed here." in content
     assert "Manual backup" in content
@@ -601,7 +629,7 @@ def test_self_update_repo_version_info_includes_display_version_for_non_main(mon
         self_update,
         "_run_git",
         lambda repo_dir, *args: {
-            ("describe", "--tags", "--always"): "v1.11-9-gf69147a",
+            ("describe", "--tags", "--always"): "a0s-v1.11-9-gf69147a",
             ("rev-parse", "HEAD"): "f69147a123456789",
             ("branch", "--show-current"): "development",
         }[args],
@@ -609,8 +637,8 @@ def test_self_update_repo_version_info_includes_display_version_for_non_main(mon
 
     info = self_update.get_repo_version_info(tmp_path)
 
-    assert info["short_tag"] == "v1.11"
-    assert info["display_version"] == "v1.11+9"
+    assert info["short_tag"] == "a0s-v1.11"
+    assert info["display_version"] == "a0s-v1.11+9"
     assert info["short_commit"] == "f69147a"
 
 
@@ -637,8 +665,8 @@ def test_self_update_schedule_rejects_missing_tag_on_branch(monkeypatch, tmp_pat
         "get_repo_version_info",
         lambda _repo: {
             "branch": "development",
-            "describe": "v1.0",
-            "short_tag": "v1.0",
+            "describe": "a0s-v1.0",
+            "short_tag": "a0s-v1.0",
             "commit": "abc123",
             "short_commit": "abc123",
         },
@@ -647,7 +675,7 @@ def test_self_update_schedule_rejects_missing_tag_on_branch(monkeypatch, tmp_pat
         self_update,
         "get_selector_tag_options",
         lambda branch, *, repo_dir=None, current_version=None: (
-            [{"value": "v1.0", "label": "v1.0"}],
+            [{"value": "a0s-v1.0", "label": "a0s-v1.0"}],
             [],
             "",
         ),
@@ -664,10 +692,10 @@ def test_self_update_schedule_rejects_missing_tag_on_branch(monkeypatch, tmp_pat
     )
     monkeypatch.setattr(self_update, "_write_yaml", lambda path, payload: None)
 
-    with pytest.raises(ValueError, match=r"Version v1\.1 does not exist on branch development\."):
+    with pytest.raises(ValueError, match=r"Version a0s-v1\.9 does not exist on branch development\."):
         self_update.schedule_update(
             branch="development",
-            tag="v1.1",
+            tag="a0s-v1.9",
             backup_usr=True,
             backup_path="",
             backup_name="",
@@ -682,8 +710,8 @@ def test_self_update_schedule_accepts_latest_when_selector_exposes_it(monkeypatc
         "get_repo_version_info",
         lambda _repo: {
             "branch": "development",
-            "describe": "v1.4-2-gabc1234",
-            "short_tag": "v1.4",
+            "describe": "a0s-v1.4-2-gabc1234",
+            "short_tag": "a0s-v1.4",
             "commit": "abc1234",
             "short_commit": "abc1234",
         },
@@ -693,7 +721,7 @@ def test_self_update_schedule_accepts_latest_when_selector_exposes_it(monkeypatc
         self_update,
         "get_selector_tag_options",
         lambda branch, *, repo_dir=None, current_version=None: (
-            [{"value": "latest", "label": "latest (v1.4+2)"}],
+            [{"value": "latest", "label": "latest (a0s-v1.4+2)"}],
             [],
             "",
         ),
@@ -1160,6 +1188,11 @@ def test_self_update_manager_latest_on_main_uses_current_major_release(monkeypat
     manager = load_self_update_manager()
     monkeypatch.setattr(
         manager,
+        "get_update_source_urls",
+        lambda repo_dir: ["https://github.com/lost-rob0t/a0-symbolics.git"],
+    )
+    monkeypatch.setattr(
+        manager,
         "fetch_branch_refs",
         lambda repo_dir, branch, logger: "refs/remotes/a0-self-update/main",
     )
@@ -1167,44 +1200,51 @@ def test_self_update_manager_latest_on_main_uses_current_major_release(monkeypat
         manager,
         "git_output",
         lambda repo_dir, *args: {
-            ("tag", "--merged", "refs/remotes/a0-self-update/main"): "v2.0\nv1.4\nv1.2\n",
-            ("rev-parse", "refs/tags/v1.4^{commit}"): "deadbeef1234",
-        }[args],
+            ("tag", "--merged", "refs/remotes/a0-self-update/main"): "a0s-v2.0\na0s-v1.4\na0s-v1.2\n",
+            ("rev-parse", "refs/tags/a0s-v1.4^{commit}"): "deadbeef1234",
+            ("cat-file", "-e", "deadbeef1234:maint/upstream.toml"): "",
+        }.get(args, ""),
     )
 
     resolved = manager.resolve_requested_target(
         Path("/tmp/repo"),
         "main",
         "latest",
-        "v1.2",
+        "a0s-v1.2",
         manager.NullLogger(),
     )
 
-    assert resolved["effective_tag"] == "v1.4"
-    assert resolved["expected_short_tag"] == "v1.4"
+    assert resolved["effective_tag"] == "a0s-v1.4"
+    assert resolved["expected_short_tag"] == "a0s-v1.4"
     assert resolved["expected_commit"] == "deadbeef1234"
 
 
 def test_self_update_manager_explicit_tag_uses_peeled_commit(monkeypatch):
     manager = load_self_update_manager()
+    monkeypatch.setattr(
+        manager,
+        "get_update_source_urls",
+        lambda repo_dir: ["https://github.com/lost-rob0t/a0-symbolics.git"],
+    )
     monkeypatch.setattr(manager, "fetch_release_refs", lambda repo_dir, branch, tag, logger: None)
     monkeypatch.setattr(
         manager,
         "git_output",
         lambda repo_dir, *args: {
-            ("rev-parse", "refs/tags/v1.10^{commit}"): "192d6e2cae1a85c0a2e7a6ecf41c153b39f1b4c6",
-        }[args],
+            ("rev-parse", "refs/tags/a0s-v1.10^{commit}"): "192d6e2cae1a85c0a2e7a6ecf41c153b39f1b4c6",
+            ("cat-file", "-e", "192d6e2cae1a85c0a2e7a6ecf41c153b39f1b4c6:maint/upstream.toml"): "",
+        }.get(args, ""),
     )
 
     resolved = manager.resolve_requested_target(
         Path("/tmp/repo"),
         "development",
-        "v1.10",
-        "v1.11",
+        "a0s-v1.10",
+        "a0s-v1.11",
         manager.NullLogger(),
     )
 
-    assert resolved["effective_tag"] == "v1.10"
+    assert resolved["effective_tag"] == "a0s-v1.10"
     assert resolved["expected_commit"] == "192d6e2cae1a85c0a2e7a6ecf41c153b39f1b4c6"
 
 
@@ -1251,6 +1291,11 @@ def test_self_update_manager_skip_check_requires_exact_describe_match():
 
 def test_self_update_manager_fetch_release_refs_checks_peeled_tag_commit(monkeypatch):
     manager = load_self_update_manager()
+    monkeypatch.setattr(
+        manager,
+        "get_update_source_urls",
+        lambda repo_dir: ["https://github.com/lost-rob0t/a0-symbolics.git"],
+    )
     commands = []
     monkeypatch.setattr(
         manager,
@@ -1261,15 +1306,20 @@ def test_self_update_manager_fetch_release_refs_checks_peeled_tag_commit(monkeyp
     manager.fetch_release_refs(
         Path("/tmp/repo"),
         "development",
-        "v1.10",
+        "a0s-v1.10",
         manager.NullLogger(),
     )
 
-    assert commands[1][-2] == "refs/tags/v1.10^{commit}"
+    assert commands[1][-2] == "refs/tags/a0s-v1.10^{commit}"
 
 
 def test_self_update_manager_latest_on_non_main_rejects_cross_major(monkeypatch):
     manager = load_self_update_manager()
+    monkeypatch.setattr(
+        manager,
+        "get_update_source_urls",
+        lambda repo_dir: ["https://github.com/lost-rob0t/a0-symbolics.git"],
+    )
     monkeypatch.setattr(
         manager,
         "fetch_branch_refs",
@@ -1279,9 +1329,10 @@ def test_self_update_manager_latest_on_non_main_rejects_cross_major(monkeypatch)
         manager,
         "git_output",
         lambda repo_dir, *args: {
-            ("describe", "--tags", "--always", "refs/remotes/a0-self-update/development"): "v2.0-3-gabc1234",
+            ("describe", "--tags", "--always", "refs/remotes/a0-self-update/development"): "a0s-v2.0-3-gabc1234",
             ("rev-parse", "refs/remotes/a0-self-update/development"): "abc123456789",
-        }[args],
+            ("cat-file", "-e", "abc123456789:maint/upstream.toml"): "",
+        }.get(args, ""),
     )
 
     with pytest.raises(RuntimeError, match=r"Use an explicit tag to change major versions"):
@@ -1289,7 +1340,7 @@ def test_self_update_manager_latest_on_non_main_rejects_cross_major(monkeypatch)
             Path("/tmp/repo"),
             "development",
             "latest",
-            "v1.2",
+            "a0s-v1.2",
             manager.NullLogger(),
         )
 
@@ -1300,8 +1351,8 @@ def test_self_update_schedule_rejects_latest_when_durable_updater_lacks_support(
         "get_repo_version_info",
         lambda _repo: {
             "branch": "development",
-            "describe": "v1.4-2-gabc1234",
-            "short_tag": "v1.4",
+            "describe": "a0s-v1.4-2-gabc1234",
+            "short_tag": "a0s-v1.4",
             "commit": "abc1234",
             "short_commit": "abc1234",
         },

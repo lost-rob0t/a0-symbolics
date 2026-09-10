@@ -49,7 +49,7 @@ def test_memory_recall_defaults_limit_ambient_context():
 
 
 def test_solving_prompt_is_compact_and_rage_free():
-    text = (ROOT / "prompts/agent.system.main.solving.md").read_text(encoding="utf-8")
+    text = (ROOT / "plugins/_a0s_prompts/prompts/agent.system.main.solving.md").read_text(encoding="utf-8")
     assert "explain each step in thoughts" not in text.lower()
     assert "RAGE" not in text
     assert len(text) < 1400

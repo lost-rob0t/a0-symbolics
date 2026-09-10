@@ -9,12 +9,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
-from helpers import git, yaml
+from helpers import git, symbolics_release, yaml
 from helpers.localization import Localization
 
 
-OFFICIAL_REPO_AUTHOR = "agent0ai"
-OFFICIAL_REPO_NAME = "agent-zero"
+# a0-symbolics policy: stable installations update from the Symbolics
+# distribution remotes declared in maint/upstream.toml, never from raw
+# upstream Agent Zero. The env override exists for development checkouts.
+UPSTREAM_SOURCE_OVERRIDE_ENV = "A0_ALLOW_UPSTREAM_SELF_UPDATE"
+UPDATE_SOURCE_OVERRIDE_ENV = "A0_SELF_UPDATE_REMOTE_URL"
 BRANCH_OPTIONS = [
     {"value": "main", "label": "main"},
     {"value": "ready", "label": "ready"},
@@ -142,8 +145,42 @@ def get_repo_self_update_manager_path(
     return get_repo_dir(repo_dir) / "docker" / "run" / "fs" / "exe" / "self_update_manager.py"
 
 
-def _get_official_remote_url() -> str:
-    return f"https://github.com/{OFFICIAL_REPO_AUTHOR}/{OFFICIAL_REPO_NAME}.git"
+def _get_update_source_urls() -> list[str]:
+    """Update source candidates: env override first, then distribution metadata."""
+    urls: list[str] = []
+    env_url = os.environ.get(UPDATE_SOURCE_OVERRIDE_ENV, "").strip()
+    if env_url:
+        urls.append(env_url)
+    for url in symbolics_release.get_distribution_repo_urls():
+        if url not in urls:
+            urls.append(url)
+    return urls
+
+
+def _upstream_source_override_enabled() -> bool:
+    return os.environ.get(UPSTREAM_SOURCE_OVERRIDE_ENV, "").strip() == "1"
+
+
+def get_update_source_urls() -> list[str]:
+    """Validate the update source policy and return reachable source URLs.
+
+    Raises when no Symbolics distribution source is configured or when the
+    configured source points at raw upstream Agent Zero without the explicit
+    development override.
+    """
+    urls = _get_update_source_urls()
+    if not urls:
+        raise RuntimeError(
+            "No a0-symbolics update source is configured. "
+            f"Provide {UPDATE_SOURCE_OVERRIDE_ENV} or maint/upstream.toml with a distribution repository."
+        )
+    if any(symbolics_release.is_upstream_repo_url(url) for url in urls):
+        if not _upstream_source_override_enabled():
+            raise RuntimeError(
+                "a0-symbolics installations must self-update from the Symbolics distribution, "
+                f"not raw Agent Zero upstream. Set {UPSTREAM_SOURCE_OVERRIDE_ENV}=1 only in development checkouts."
+            )
+    return urls
 
 
 def _run_git_raw(*args: str) -> str:
@@ -296,17 +333,26 @@ def _get_remote_branch_names() -> list[str]:
     ):
         return list(_remote_branch_list_cache[1])
 
-    output = _run_git_raw("ls-remote", "--heads", _get_official_remote_url())
     branches: list[str] = []
     prefix = "refs/heads/"
-    for line in output.splitlines():
-        parts = line.strip().split()
-        if len(parts) != 2:
+    for url in get_update_source_urls():
+        try:
+            output = _run_git_raw("ls-remote", "--heads", url)
+        except Exception:
             continue
-        ref_name = parts[1]
-        if not ref_name.startswith(prefix):
-            continue
-        branches.append(ref_name[len(prefix):])
+        for line in output.splitlines():
+            parts = line.strip().split()
+            if len(parts) != 2:
+                continue
+            ref_name = parts[1]
+            if not ref_name.startswith(prefix):
+                continue
+            branches.append(ref_name[len(prefix):])
+        if branches:
+            break
+
+    if not branches:
+        raise RuntimeError("No update source branches could be listed.")
 
     sorted_branches = _sort_branch_names(branches)
     _remote_branch_list_cache = (now, sorted_branches)
@@ -401,21 +447,28 @@ def _get_remote_branch_merged_tags(branch: str) -> set[str]:
     if cached and now - cached[0] <= REMOTE_BRANCH_TAG_CACHE_TTL_SECONDS:
         return set(cached[1])
 
-    with tempfile.TemporaryDirectory(prefix="a0-self-update-tags-") as temp_dir:
-        repository = Path(temp_dir)
-        _run_git(repository, "init", "--bare")
-        _run_git(
-            repository,
-            "fetch",
-            "--quiet",
-            "--prune",
-            "--filter=blob:none",
-            "--tags",
-            _get_official_remote_url(),
-            f"refs/heads/{normalized_branch}:refs/remotes/origin/{normalized_branch}",
-        )
-        output = _run_git(repository, "tag", "--merged", f"refs/remotes/origin/{normalized_branch}")
-        merged_tags = {line.strip() for line in output.splitlines() if line.strip()}
+    merged_tags: set[str] = set()
+    for url in get_update_source_urls():
+        with tempfile.TemporaryDirectory(prefix="a0-self-update-tags-") as temp_dir:
+            repository = Path(temp_dir)
+            _run_git(repository, "init", "--bare")
+            try:
+                _run_git(
+                    repository,
+                    "fetch",
+                    "--quiet",
+                    "--prune",
+                    "--filter=blob:none",
+                    "--tags",
+                    url,
+                    f"refs/heads/{normalized_branch}:refs/remotes/origin/{normalized_branch}",
+                )
+            except Exception:
+                continue
+            output = _run_git(repository, "tag", "--merged", f"refs/remotes/origin/{normalized_branch}")
+            merged_tags = {line.strip() for line in output.splitlines() if line.strip()}
+        if merged_tags:
+            break
 
     _remote_branch_tag_cache[normalized_branch] = (now, merged_tags)
     return set(merged_tags)
@@ -431,31 +484,40 @@ def _get_remote_branch_head_info(branch: str) -> dict[str, str]:
     if cached and now - cached[0] <= REMOTE_BRANCH_TAG_CACHE_TTL_SECONDS:
         return dict(cached[1])
 
-    with tempfile.TemporaryDirectory(prefix="a0-self-update-head-") as temp_dir:
-        repository = Path(temp_dir)
-        _run_git(repository, "init", "--bare")
-        _run_git(
-            repository,
-            "fetch",
-            "--quiet",
-            "--prune",
-            "--filter=blob:none",
-            "--tags",
-            _get_official_remote_url(),
-            f"refs/heads/{normalized_branch}:refs/remotes/origin/{normalized_branch}",
-        )
-        remote_ref = f"refs/remotes/origin/{normalized_branch}"
-        describe = _run_git(repository, "describe", "--tags", "--always", remote_ref)
-        commit = _run_git(repository, "rev-parse", remote_ref)
-        short_tag = _normalize_describe_to_version(describe)
-        released_at = _get_tag_release_time_in_repo(repository, short_tag)
+    payload: dict[str, str] = {}
+    for url in get_update_source_urls():
+        with tempfile.TemporaryDirectory(prefix="a0-self-update-head-") as temp_dir:
+            repository = Path(temp_dir)
+            _run_git(repository, "init", "--bare")
+            try:
+                _run_git(
+                    repository,
+                    "fetch",
+                    "--quiet",
+                    "--prune",
+                    "--filter=blob:none",
+                    "--tags",
+                    url,
+                    f"refs/heads/{normalized_branch}:refs/remotes/origin/{normalized_branch}",
+                )
+            except Exception:
+                continue
+            remote_ref = f"refs/remotes/origin/{normalized_branch}"
+            describe = _run_git(repository, "describe", "--tags", "--always", remote_ref)
+            commit = _run_git(repository, "rev-parse", remote_ref)
+            short_tag = _normalize_describe_to_version(describe)
+            released_at = _get_tag_release_time_in_repo(repository, short_tag)
+            payload = {
+                "describe": describe,
+                "short_tag": short_tag,
+                "commit": commit,
+                "released_at": released_at,
+            }
+        if payload.get("commit"):
+            break
 
-    payload = {
-        "describe": describe,
-        "short_tag": short_tag,
-        "commit": commit,
-        "released_at": released_at,
-    }
+    if not payload:
+        return {"describe": "", "short_tag": "", "commit": "", "released_at": ""}
     _remote_branch_head_cache[normalized_branch] = (now, payload)
     return dict(payload)
 
@@ -525,8 +587,13 @@ def _get_branch_head_info(
     return _get_local_branch_head_info(branch, repo_dir=repo_dir)
 
 
+def _release_tag_pattern() -> str:
+    prefix = re.escape(symbolics_release.get_release_prefix())
+    return rf"{prefix}v(\d+)\.(\d+)(?:\.(\d+))?"
+
+
 def _parse_selector_version(tag: str) -> tuple[int, int] | None:
-    match = re.fullmatch(r"v(\d+)\.(\d+)", tag.strip())
+    match = re.fullmatch(_release_tag_pattern(), tag.strip())
     if not match:
         return None
     return (
@@ -553,7 +620,8 @@ def is_valid_selector_tag(tag: str) -> bool:
 
 
 def _parse_major_version(tag: str) -> int | None:
-    match = re.fullmatch(r"v(\d+)(?:[.-].*)?", tag.strip())
+    prefix = re.escape(symbolics_release.get_release_prefix())
+    match = re.fullmatch(rf"{prefix}v(\d+)(?:[.-].*)?", tag.strip())
     if not match:
         return None
     return int(match.group(1))
@@ -708,16 +776,30 @@ def get_current_branch_latest_info(
     }
 
 
+def _list_remote_tags() -> list[str]:
+    """List release tags from the distribution sources (primary first)."""
+    for url in get_update_source_urls():
+        try:
+            output = _run_git_raw("ls-remote", "--tags", "--refs", url)
+        except Exception:
+            continue
+        tags: list[str] = []
+        for line in output.splitlines():
+            parts = line.strip().split()
+            if len(parts) == 2 and "refs/tags/" in parts[1]:
+                tags.append(parts[1].split("refs/tags/")[-1])
+        if tags:
+            return tags
+    return []
+
+
 def get_available_tags(
     branch: str | None = None,
     *,
     repo_dir: str | Path | None = None,
     query: str = "",
 ) -> tuple[list[str], str]:
-    result = git.get_remote_releases(OFFICIAL_REPO_AUTHOR, OFFICIAL_REPO_NAME)
-    if result.error:
-        return [], result.error
-    tags = [release.tag for release in result.releases]
+    tags = _list_remote_tags()
 
     if branch:
         merged_tags = _get_branch_merged_tags(branch, repo_dir=repo_dir)
@@ -829,6 +911,7 @@ def get_update_info(repo_dir: str | Path | None = None) -> dict[str, Any]:
     return {
         "repo_dir": str(repository),
         "current": version_info,
+        "symbolics": symbolics_release.get_symbolics_release_identity(str(repository)),
         "main_branch_latest": get_current_major_main_latest_info(
             current_version,
             repo_dir=repository,
@@ -890,9 +973,14 @@ def schedule_update(
             )
         normalized_tag = "latest"
     elif not is_valid_selector_tag(normalized_tag):
-        raise ValueError("Release tag must use the format vX.Y.")
+        raise ValueError(
+            f"Release tag must use the format {symbolics_release.get_release_prefix()}vX.Y. "
+            "Upstream Agent Zero tags are not valid update targets."
+        )
     elif not _is_selector_supported_tag(normalized_tag):
-        raise ValueError("Release tag must be v1.0 or newer.")
+        raise ValueError(
+            f"Release tag must be {symbolics_release.get_release_prefix()}v1.0 or newer."
+        )
 
     selector_tag_options, _, tag_lookup_error = get_selector_tag_options(
         normalized_branch,

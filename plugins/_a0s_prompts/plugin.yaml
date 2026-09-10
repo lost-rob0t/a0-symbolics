@@ -1,0 +1,8 @@
+name: _a0s_prompts
+title: Symbolics Prompt Overlay
+description: Bundled Symbolics prompt overrides (problem-solving workflow, tool catalog trim, persona positioning) shipped as a plugin so upstream prompt files stay unmodified.
+version: 0.1.0
+settings_sections: []
+per_project_config: false
+per_agent_config: false
+always_enabled: true

@@ -23,10 +23,11 @@ from typing import Any
 import yaml
 
 
-OFFICIAL_REPO_URL = os.environ.get(
-    "A0_SELF_UPDATE_REMOTE_URL",
-    "https://github.com/agent0ai/agent-zero.git",
-)
+UPSTREAM_REPO_URL = "https://github.com/agent0ai/agent-zero.git"
+UPSTREAM_REPO_SIGNATURE = "agent0ai/agent-zero"
+UPSTREAM_SOURCE_OVERRIDE_ENV = "A0_ALLOW_UPSTREAM_SELF_UPDATE"
+UPDATE_SOURCE_OVERRIDE_ENV = "A0_SELF_UPDATE_REMOTE_URL"
+DISTRIBUTION_METADATA_RELPATH = "maint/upstream.toml"
 REPO_DIR = Path("/a0")
 TRIGGER_FILE = Path("/exe/a0-self-update.yaml")
 STATUS_FILE = Path("/exe/a0-self-update-status.yaml")
@@ -139,7 +140,7 @@ def split_describe_version(describe: str) -> tuple[str, int]:
 
 
 def parse_selector_version(tag: str) -> tuple[int, int] | None:
-    match = re.fullmatch(r"v(\d+)\.(\d+)", tag.strip())
+    match = re.fullmatch(r"a0s-v(\d+)\.(\d+)(?:\.(\d+))?", tag.strip())
     if not match:
         return None
     return int(match.group(1)), int(match.group(2))
@@ -163,7 +164,7 @@ def sort_selector_supported_tags(tags: list[str]) -> list[str]:
 
 
 def parse_major_version(tag: str) -> int | None:
-    match = re.fullmatch(r"v(\d+)(?:[.-].*)?", tag.strip())
+    match = re.fullmatch(r"a0s-v(\d+)(?:[.-].*)?", tag.strip())
     if not match:
         return None
     return int(match.group(1))
@@ -175,6 +176,63 @@ def is_latest_selector_tag(tag: str) -> bool:
 
 def get_tag_commit_ref(tag: str) -> str:
     return f"refs/tags/{tag}^{{commit}}"
+
+
+def load_distribution_repo_urls(repo_dir: Path) -> list[str]:
+    """Update source candidates: env override first, then maint/upstream.toml."""
+    urls: list[str] = []
+    env_url = os.environ.get(UPDATE_SOURCE_OVERRIDE_ENV, "").strip()
+    if env_url:
+        urls.append(env_url)
+    try:
+        import tomllib
+
+        with (repo_dir / DISTRIBUTION_METADATA_RELPATH).open("rb") as handle:
+            data = tomllib.load(handle)
+        distribution = data.get("distribution", {})
+        for key in ("repository", "repository_mirror"):
+            value = str(distribution.get(key, "")).strip()
+            if value and value not in urls:
+                urls.append(value)
+    except Exception:
+        pass
+    return urls
+
+
+def get_update_source_urls(repo_dir: Path) -> list[str]:
+    """Validate the update source policy and return source URLs.
+
+    A stable a0-symbolics installation must never update itself by checking
+    raw Agent Zero upstream source over the tracked distribution tree.
+    """
+    urls = load_distribution_repo_urls(repo_dir)
+    if not urls:
+        raise RuntimeError(
+            "No a0-symbolics update source is configured. "
+            f"Provide {UPDATE_SOURCE_OVERRIDE_ENV} or {DISTRIBUTION_METADATA_RELPATH} with a distribution repository."
+        )
+    if any(UPSTREAM_REPO_SIGNATURE in url for url in urls) and (
+        os.environ.get(UPSTREAM_SOURCE_OVERRIDE_ENV, "").strip() != "1"
+    ):
+        raise RuntimeError(
+            "Refusing to self-update a0-symbolics from raw Agent Zero upstream. "
+            "Symbolics installs update from the Symbolics distribution. "
+            f"Set {UPSTREAM_SOURCE_OVERRIDE_ENV}=1 only in development checkouts."
+        )
+    return urls
+
+
+def require_distribution_marker(repo_dir: Path, target_ref: str, logger: AttemptLogger) -> None:
+    """Refuse any target commit that does not carry the distribution marker."""
+    try:
+        git_output(repo_dir, "cat-file", "-e", f"{target_ref}:{DISTRIBUTION_METADATA_RELPATH}")
+    except Exception:
+        raise RuntimeError(
+            "Refusing to update: the requested target does not carry the a0-symbolics "
+            f"distribution marker ({DISTRIBUTION_METADATA_RELPATH}). "
+            "Raw Agent Zero upstream is not a valid a0-symbolics update target."
+        )
+    logger.log(f"Target {target_ref} carries the a0-symbolics distribution marker.")
 
 
 def build_default_backup_name() -> str:
@@ -189,9 +247,9 @@ def normalize_requested_tag(tag: str) -> str:
     if is_latest_selector_tag(normalized):
         return LATEST_SELECTOR_TAG
     if not is_valid_selector_tag(normalized):
-        raise ValueError("Release tag must use the format vX.Y.")
+        raise ValueError("Release tag must use the format a0s-vX.Y.")
     if not is_supported_selector_tag(normalized):
-        raise ValueError("Release tag must be v1.0 or newer.")
+        raise ValueError("Release tag must be a0s-v1.0 or newer.")
     return normalized
 
 
@@ -752,57 +810,72 @@ def clean_repo_worktree(
 def fetch_release_refs(repo_dir: Path, branch: str, tag: str, logger: AttemptLogger) -> None:
     remote_branch_ref = f"refs/remotes/a0-self-update/{branch}"
     tag_commit_ref = get_tag_commit_ref(tag)
-    logger.log(f"Fetching branch {branch} and tag {tag} from {OFFICIAL_REPO_URL}")
-    run_command(
-        [
-            "git",
-            "-C",
-            str(repo_dir),
-            "fetch",
-            "--force",
-            OFFICIAL_REPO_URL,
-            f"+refs/heads/{branch}:{remote_branch_ref}",
-            f"+refs/tags/{tag}:refs/tags/{tag}",
-        ],
-        cwd=None,
-        logger=logger,
-        error_message=f"Failed to fetch branch {branch} and tag {tag} from the official repository.",
-    )
-    run_command(
-        [
-            "git",
-            "-C",
-            str(repo_dir),
-            "merge-base",
-            "--is-ancestor",
-            tag_commit_ref,
-            remote_branch_ref,
-        ],
-        cwd=None,
-        logger=logger,
-        error_message=f"Requested tag {tag} is not reachable from official branch {branch}.",
-    )
+    errors: list[str] = []
+    for source_url in get_update_source_urls(repo_dir):
+        logger.log(f"Fetching branch {branch} and tag {tag} from {source_url}")
+        try:
+            run_command(
+                [
+                    "git",
+                    "-C",
+                    str(repo_dir),
+                    "fetch",
+                    "--force",
+                    source_url,
+                    f"+refs/heads/{branch}:{remote_branch_ref}",
+                    f"+refs/tags/{tag}:refs/tags/{tag}",
+                ],
+                cwd=None,
+                logger=logger,
+                error_message=f"Failed to fetch branch {branch} and tag {tag} from {source_url}.",
+            )
+        except Exception as exc:
+            errors.append(str(exc))
+            continue
+        run_command(
+            [
+                "git",
+                "-C",
+                str(repo_dir),
+                "merge-base",
+                "--is-ancestor",
+                tag_commit_ref,
+                remote_branch_ref,
+            ],
+            cwd=None,
+            logger=logger,
+            error_message=f"Requested tag {tag} is not reachable from branch {branch} on {source_url}.",
+        )
+        return
+    raise RuntimeError(f"Failed to fetch branch {branch} and tag {tag} from any configured update source: {errors}")
 
 
 def fetch_branch_refs(repo_dir: Path, branch: str, logger: AttemptLogger) -> str:
     remote_branch_ref = f"refs/remotes/a0-self-update/{branch}"
-    logger.log(f"Fetching branch {branch} and tags from {OFFICIAL_REPO_URL}")
-    run_command(
-        [
-            "git",
-            "-C",
-            str(repo_dir),
-            "fetch",
-            "--force",
-            "--tags",
-            OFFICIAL_REPO_URL,
-            f"+refs/heads/{branch}:{remote_branch_ref}",
-        ],
-        cwd=None,
-        logger=logger,
-        error_message=f"Failed to fetch branch {branch} from the official repository.",
-    )
-    return remote_branch_ref
+    errors: list[str] = []
+    for source_url in get_update_source_urls(repo_dir):
+        logger.log(f"Fetching branch {branch} and tags from {source_url}")
+        try:
+            run_command(
+                [
+                    "git",
+                    "-C",
+                    str(repo_dir),
+                    "fetch",
+                    "--force",
+                    "--tags",
+                    source_url,
+                    f"+refs/heads/{branch}:{remote_branch_ref}",
+                ],
+                cwd=None,
+                logger=logger,
+                error_message=f"Failed to fetch branch {branch} from {source_url}.",
+            )
+        except Exception as exc:
+            errors.append(str(exc))
+            continue
+        return remote_branch_ref
+    raise RuntimeError(f"Failed to fetch branch {branch} from any configured update source: {errors}")
 
 
 def resolve_requested_target(
@@ -812,17 +885,21 @@ def resolve_requested_target(
     current_version: str,
     logger: AttemptLogger,
 ) -> dict[str, str]:
+    get_update_source_urls(repo_dir)
     normalized_tag = tag.strip()
 
     if not is_latest_selector_tag(normalized_tag):
         fetch_release_refs(repo_dir, branch, normalized_tag, logger)
         tag_commit_ref = get_tag_commit_ref(normalized_tag)
+        target_ref = f"refs/tags/{normalized_tag}"
+        expected_commit = git_output(repo_dir, "rev-parse", tag_commit_ref)
+        require_distribution_marker(repo_dir, expected_commit, logger)
         return {
             "requested_tag": normalized_tag,
             "effective_tag": normalized_tag,
-            "target_ref": f"refs/tags/{normalized_tag}",
+            "target_ref": target_ref,
             "expected_short_tag": normalized_tag,
-            "expected_commit": git_output(repo_dir, "rev-parse", tag_commit_ref),
+            "expected_commit": expected_commit,
             "target_description": f"tag {normalized_tag}",
         }
 
@@ -835,18 +912,21 @@ def resolve_requested_target(
         )
         tag_commit_ref = get_tag_commit_ref(effective_tag)
         logger.log(f"Resolved latest on main to tag {effective_tag}")
+        expected_commit = git_output(repo_dir, "rev-parse", tag_commit_ref)
+        require_distribution_marker(repo_dir, expected_commit, logger)
         return {
             "requested_tag": LATEST_SELECTOR_TAG,
             "effective_tag": effective_tag,
             "target_ref": f"refs/tags/{effective_tag}",
             "expected_short_tag": effective_tag,
-            "expected_commit": git_output(repo_dir, "rev-parse", tag_commit_ref),
+            "expected_commit": expected_commit,
             "target_description": f"latest tag {effective_tag}",
         }
 
     head_describe = git_output(repo_dir, "describe", "--tags", "--always", remote_branch_ref)
     head_short_tag = normalize_describe_to_version(head_describe)
     head_commit = git_output(repo_dir, "rev-parse", remote_branch_ref)
+    require_distribution_marker(repo_dir, head_commit, logger)
     ensure_latest_target_matches_current_major(
         branch=branch,
         current_version=current_version,
@@ -875,6 +955,7 @@ def checkout_target_release(
     exclude_paths: list[Path] | None = None,
 ) -> None:
     logger.log(f"Checking out branch {branch} at {target_description}")
+    require_distribution_marker(repo_dir, target_ref, logger)
     run_command(
         [
             "git",

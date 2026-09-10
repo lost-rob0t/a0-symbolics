@@ -69,6 +69,7 @@ Direct child DOX files:
 | Child | Scope |
 | --- | --- |
 | [_a0_connector/AGENTS.md](_a0_connector/AGENTS.md) | HTTP and WebSocket connector integration with remote tools and runtime bridges. |
+| [_a0s_prompts/AGENTS.md](_a0s_prompts/AGENTS.md) | Bundled Symbolics prompt overrides that keep upstream prompt sources unmodified. |
 | [_agent_editor/AGENTS.md](_agent_editor/AGENTS.md) | Deterministic sparse agent-profile editor API, helpers, and WebUI. |
 | [_browser/AGENTS.md](_browser/AGENTS.md) | Playwright browser tool, helpers, viewer, and browser panel UI. |
 | [_chat_branching/AGENTS.md](_chat_branching/AGENTS.md) | Chat branching from an existing message. |

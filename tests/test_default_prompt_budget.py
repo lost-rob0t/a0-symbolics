@@ -66,10 +66,11 @@ async def test_default_agent0_prompt_budget_and_guardrails():
     ).read_text(encoding="utf-8")
 
     # The default prompt now intentionally includes the compact always-on tool
-    # surface plus skill metadata. Keep the guardrail close to the observed
-    # budget so prompt creep remains visible without pretending this surface is
-    # a tiny single-tool prompt.
-    assert tokens.approximate_tokens(system_text) <= 8500
+    # surface plus skill metadata (including the bundled a0-symbolics issue
+    # reporting skill). Keep the guardrail close to the observed budget so
+    # prompt creep remains visible without pretending this surface is a tiny
+    # single-tool prompt.
+    assert tokens.approximate_tokens(system_text) <= 8600
     assert "`tool_name` must be one listed tool name" in system_text
     assert "- tool_args: key value pairs tool arguments" in system_text
     assert "### call_subordinate" in system_text
