@@ -15,6 +15,8 @@
 
 ## Local Contracts
 
+- `_symbolics` owns whether this plugin is active; do not add a second runtime-mode authority here.
+- When this plugin is active in RLM mode, the compiler path is enabled by default.
 - Python gathers and applies projections; Prolog alone selects units and computes symbolic policy.
 - Prompt visibility never grants tool authority, and native schemas may only be removed by a projection.
 - Tools registered through `register_permanent_tools` remain provider-visible whenever they are enabled and allowed by Agent Zero.
@@ -33,7 +35,7 @@
 
 - Run `pytest plugins/_prolog_context_compiler/tests` against the intended Prolog-RLM checkout.
 - Run `tests/test_default_prompt_budget.py` and tool-policy tests.
-- Verify enabled and disabled modes, sidecar restart, missing-tool retention, native-schema filtering, and long-context bounds.
+- Verify native/RLM coordinator activation, sidecar restart, missing-tool retention, native-schema filtering, and long-context bounds.
 
 ## Child DOX Index
 

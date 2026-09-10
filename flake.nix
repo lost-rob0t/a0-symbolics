@@ -49,7 +49,9 @@
               ln -sfn "$state_dir/usr" "$runtime_root/usr"
               ln -sfn "$state_dir/tmp" "$runtime_root/tmp"
               export TMPDIR="$state_dir/tmp"
-              export PROLOG_RLM_ENABLED="''${PROLOG_RLM_ENABLED:-1}"
+              if [ -z "''${A0_SYMBOLICS_MODE:-}" ] && [ ! -f "$state_dir/usr/plugins/_symbolics/config.json" ]; then
+                export A0_SYMBOLICS_MODE=rlm
+              fi
               export SWIPL_PACK_PATH="${prologRlm}/share/swi-prolog/pack''${SWIPL_PACK_PATH:+:$SWIPL_PACK_PATH}"
               cd "$runtime_root"
               exec ${python}/bin/python "$source_root/run_ui.py" "$@"
@@ -78,8 +80,12 @@
         in {
           default = pkgs.mkShell {
             packages = [ python pkgs.swi-prolog prologRlm ];
-            PROLOG_RLM_ENABLED = "1";
             SWIPL_PACK_PATH = "${prologRlm}/share/swi-prolog/pack";
+            shellHook = ''
+              if [ -z "''${A0_SYMBOLICS_MODE:-}" ] && [ ! -f usr/plugins/_symbolics/config.json ]; then
+                export A0_SYMBOLICS_MODE=rlm
+              fi
+            '';
           };
         });
 
@@ -100,17 +106,73 @@
             swipl -q -g "use_module(library(rlm)),rlm:rlm_ready,halt"
             touch "$out"
           '';
+          runtime-mode = pkgs.runCommand "a0-symbolics-runtime-mode" {
+            nativeBuildInputs = [ python ];
+          } ''
+            export HOME="$TMPDIR/home"
+            state_dir="$TMPDIR/state"
+            source_root="${source}/share/a0-symbolics"
+            runtime_root="$state_dir/runtime"
+            mkdir -p "$HOME" "$runtime_root" "$state_dir/usr/plugins" "$state_dir/tmp"
+            for entry in "$source_root"/*; do
+              name="$(basename "$entry")"
+              if [ "$name" != usr ] && [ "$name" != tmp ]; then
+                ln -sfn "$entry" "$runtime_root/$name"
+              fi
+            done
+            ln -sfn "$state_dir/usr" "$runtime_root/usr"
+            ln -sfn "$state_dir/tmp" "$runtime_root/tmp"
+            export TMPDIR="$state_dir/tmp"
+            cd "$runtime_root"
+            ${python}/bin/python - <<'PY'
+            import os
+            from pathlib import Path
+
+            from helpers import plugins
+            from plugins._symbolics.helpers.mode import sync_runtime_mode
+
+            symbolics_config = Path("usr/plugins/_symbolics/config.json")
+            symbolics_config.parent.mkdir(parents=True, exist_ok=True)
+
+            # Packaged default: RLM when no mode has been saved yet.
+            os.environ["A0_SYMBOLICS_MODE"] = "rlm"
+            assert sync_runtime_mode() == "rlm"
+            assert plugins.get_toggle_state("_prolog_rlm") == "enabled"
+            assert plugins.get_toggle_state("_prolog_context_compiler") == "enabled"
+            assert Path("usr/plugins/_prolog_rlm/.toggle-1").is_file()
+            assert Path("usr/plugins/_prolog_context_compiler/.toggle-1").is_file()
+
+            # Once a user saves a mode, the packaged default must stop masking it.
+            symbolics_config.write_text('{"mode":"native"}', encoding="utf-8")
+            os.environ.pop("A0_SYMBOLICS_MODE", None)
+            assert sync_runtime_mode() == "native"
+            assert plugins.get_toggle_state("_prolog_rlm") == "disabled"
+            assert plugins.get_toggle_state("_prolog_context_compiler") == "disabled"
+            assert Path("usr/plugins/_prolog_rlm/.toggle-0").is_file()
+            assert Path("usr/plugins/_prolog_context_compiler/.toggle-0").is_file()
+
+            # A host-provided explicit deployment override remains authoritative.
+            os.environ["A0_SYMBOLICS_MODE"] = "rlm"
+            assert sync_runtime_mode() == "rlm"
+            assert plugins.get_toggle_state("_prolog_rlm") == "enabled"
+            assert plugins.get_toggle_state("_prolog_context_compiler") == "enabled"
+            PY
+            touch "$out"
+          '';
           plugin-imports = pkgs.runCommand "a0-symbolic-plugin-imports" {
             nativeBuildInputs = [ python pkgs.swi-prolog prologRlm ];
           } ''
             export HOME="$TMPDIR/home"
-            export PROLOG_RLM_ENABLED=1
+            export A0_SYMBOLICS_MODE=rlm
             export SWIPL_PACK_PATH="${prologRlm}/share/swi-prolog/pack"
             mkdir -p "$HOME" "$TMPDIR/usr" "$TMPDIR/tmp"
             cd "${source}/share/a0-symbolics"
             ${python}/bin/python - <<'PY'
             from plugins._prolog_context_compiler.helpers.bridge import PrologContextBridge
             from plugins._prolog_rlm.helpers.bridge import PrologRuntimeBridge
+            from plugins._symbolics.helpers.mode import resolve_mode
+
+            assert resolve_mode({"mode": "native"}) == "rlm"
 
             context = PrologContextBridge(timeout=10.0)
             try:

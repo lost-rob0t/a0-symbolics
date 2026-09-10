@@ -28,9 +28,12 @@ empty-selection fallback. A stateless request is retried once after transport
 failure with the same request ID, so a restarted worker produces the same
 fingerprint and does not duplicate durable symbolic state.
 
-Set `PROLOG_RLM_ROOT` or `prolog_rlm_root` while developing against a checkout.
-Packaged environments should set `enabled: true` or `PROLOG_RLM_ENABLED=1` and
-expose the installed Prolog-RLM pack through `SWIPL_PACK_PATH` instead.
+The `_symbolics` coordinator owns activation. In `native` mode this plugin is
+absent from the active plugin set. In `rlm` mode it is enabled together with
+`_prolog_rlm`, and its internal compiler path is on by default. Set
+`PROLOG_RLM_ROOT` or `prolog_rlm_root` while developing against a checkout.
+Packaged environments leave that root empty and expose the installed
+Prolog-RLM pack through `SWIPL_PACK_PATH`.
 
 The implicit `Agent.prepare_prompt` end hook also adapts current project/DOX
 instructions and older message history into bounded inert units. Prolog selects

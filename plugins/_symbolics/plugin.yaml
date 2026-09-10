@@ -1,0 +1,9 @@
+name: _symbolics
+title: Symbolics Runtime
+description: Selects the Agent Zero runtime mode and coordinates the Prolog-RLM runtime and context compiler as one control plane.
+version: 0.1.0
+settings_sections:
+  - agent
+per_project_config: false
+per_agent_config: false
+always_enabled: true

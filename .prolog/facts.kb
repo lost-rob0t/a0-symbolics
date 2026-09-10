@@ -1,0 +1,6 @@
+% Ground facts and machine observations for this worktree.
+task('rlm-context-projection').
+repo_state('09fcbf546f1c7e33a067f406128b0961d3e625ef', '6630042495b857ee3199df54c529a7561bbe5979778836f1a659200e346670d8').
+research_required(true).
+brave_search('be0afc7824340989015ce13fdea386fb720e7204dacf20696fefb8fb2e3f5534', '489ea74a14b91dc7785581e88d827920bfc05b1380ac4dc1e46e6ee57598a776', '2026-09-06T11:14:24Z', '5116eb4d81f3ee49cd6d288db2f78e13fbbd7403', 'ccdcb48cdb3d34aced22f1cf47ada282f73ec92eac471c3dfb1bf2ea1d642877').
+observation('03658eae0ccda2b2', command(['nix', 'build', '--no-link', '--print-out-paths', '--impure', '--expr', 'let flake = builtins.getFlake (toString /tmp/opencode/pr51); pkgs = import flake.inputs.nixpkgs { system = "x86_64-linux"; }; in import ./nix/symbolics-test-env.nix { inherit pkgs; }']), exit(0), '1125934c7157c2e3c96c7979c7d1962a38a6fd88c26f4cde63600d5fbd23a704', '09fcbf546f1c7e33a067f406128b0961d3e625ef', '6630042495b857ee3199df54c529a7561bbe5979778836f1a659200e346670d8').
