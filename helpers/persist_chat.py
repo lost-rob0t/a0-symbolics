@@ -4,10 +4,12 @@ import tempfile
 import uuid
 from collections import OrderedDict
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from agent import Agent, AgentConfig, AgentContext, AgentContextType
 from helpers import files, history
+from helpers.context_utils import validate_context_id
 from helpers.litellm_transport import delete_stored_response_ids
 from helpers.localization import Localization
 from initialize import initialize_agent
@@ -32,6 +34,23 @@ def _parse_persisted_datetime(value: str | None) -> datetime:
     return dt
 
 
+def _chat_path(ctxid: str, *parts: str) -> str:
+    """Resolve a validated chat-owned path and prove exact containment."""
+
+    safe_id = validate_context_id(ctxid)
+    root = Path(files.get_abs_path(CHATS_FOLDER)).resolve()
+    chat_root = root / safe_id
+    resolved_chat_root = chat_root.resolve()
+    if resolved_chat_root != chat_root:
+        raise ValueError("context id path aliases another chat storage location")
+
+    candidate = chat_root.joinpath(*parts)
+    resolved_candidate = candidate.resolve()
+    if resolved_candidate != candidate or not resolved_candidate.is_relative_to(chat_root):
+        raise ValueError("context id resolves outside chat storage")
+    return str(candidate)
+
+
 def get_chat_folder_path(ctxid: str):
     """
     Get the folder path for any context (chat or task).
@@ -42,10 +61,12 @@ def get_chat_folder_path(ctxid: str):
     Returns:
         The absolute path to the context folder
     """
-    return files.get_abs_path(CHATS_FOLDER, ctxid)
+    return _chat_path(ctxid)
+
 
 def get_chat_msg_files_folder(ctxid: str):
-    return files.get_abs_path(get_chat_folder_path(ctxid), "messages")
+    return _chat_path(ctxid, "messages")
+
 
 def save_tmp_chat(context: AgentContext):
     """Save context to the chats folder"""
@@ -75,7 +96,11 @@ def load_tmp_chats():
     folders = files.list_files(CHATS_FOLDER, "*")
     json_files = []
     for folder_name in folders:
-        chat_file = _get_chat_file_path(folder_name)
+        try:
+            chat_file = _get_chat_file_path(folder_name)
+        except ValueError as e:
+            print(f"Unsafe legacy chat folder {folder_name!r}: {e}")
+            continue
         if files.exists(chat_file):
             json_files.append(chat_file)
 
@@ -84,6 +109,10 @@ def load_tmp_chats():
         try:
             js = files.read_file(file)
             data = json.loads(js)
+            folder_name = files.basename(files.dirname(file))
+            persisted_id = data.get("id")
+            if persisted_id is not None and persisted_id != folder_name:
+                raise ValueError("persisted context id does not match chat folder")
             ctx = _deserialize_context(data)
             mark_chat_saved(ctx)
             ctxids.append(ctx.id)
@@ -93,7 +122,7 @@ def load_tmp_chats():
 
 
 def _get_chat_file_path(ctxid: str):
-    return files.get_abs_path(CHATS_FOLDER, ctxid, CHAT_FILE_NAME)
+    return _chat_path(ctxid, CHAT_FILE_NAME)
 
 
 def _write_atomic(path: str, content: str) -> None:
@@ -123,12 +152,16 @@ def mark_chat_saved(context: AgentContext) -> None:
 
 
 def saved_chat_ids() -> set[str]:
-    return {
-        files.basename(files.dirname(path))
-        for path in files.find_existing_paths_by_pattern(
-            files.get_abs_path(CHATS_FOLDER, "*", CHAT_FILE_NAME)
-        )
-    }
+    result: set[str] = set()
+    for path in files.find_existing_paths_by_pattern(
+        files.get_abs_path(CHATS_FOLDER, "*", CHAT_FILE_NAME)
+    ):
+        ctxid = files.basename(files.dirname(path))
+        try:
+            result.add(validate_context_id(ctxid))
+        except ValueError:
+            print(f"Unsafe legacy chat folder ignored: {ctxid!r}")
+    return result
 
 
 def _convert_v080_chats():
@@ -136,7 +169,11 @@ def _convert_v080_chats():
     for file in json_files:
         path = files.get_abs_path(CHATS_FOLDER, file)
         name = file.rstrip(".json")
-        new = _get_chat_file_path(name)
+        try:
+            new = _get_chat_file_path(name)
+        except ValueError as e:
+            print(f"Unsafe legacy chat file {file!r}: {e}")
+            continue
         files.move_file(path, new)
 
 
@@ -161,8 +198,7 @@ def export_json_chat(context: AgentContext):
 
 def remove_chat(ctxid):
     """Remove a chat or task context"""
-    if not isinstance(ctxid, str) or not ctxid.strip():
-        raise ValueError("remove_chat: context id must not be empty")
+    ctxid = validate_context_id(ctxid)
     _delete_provider_responses_for_chat(ctxid)
     path = get_chat_folder_path(ctxid)
     files.delete_dir(path)
@@ -170,8 +206,7 @@ def remove_chat(ctxid):
 
 def remove_msg_files(ctxid):
     """Remove all message files for a chat or task context"""
-    if not isinstance(ctxid, str) or not ctxid.strip():
-        raise ValueError("remove_msg_files: context id must not be empty")
+    ctxid = validate_context_id(ctxid)
     path = get_chat_msg_files_folder(ctxid)
     files.delete_dir(path)
 
@@ -189,7 +224,6 @@ def _serialize_context(context: AgentContext):
     while agent:
         agents.append(_serialize_agent(agent))
         agent = agent.data.get(Agent.DATA_NAME_SUBORDINATE, None)
-
 
     data = {k: v for k, v in context.data.items() if not k.startswith("_")}
     output_data = {k: v for k, v in context.output_data.items() if not k.startswith("_")}
@@ -252,10 +286,13 @@ def _deserialize_context(data):
     override_settings = {"agent_profile": profile} if profile else None
     config = initialize_agent(override_settings=override_settings)
     log = _deserialize_log(data.get("log", None))
+    persisted_id = data.get("id", None)
+    if persisted_id is not None:
+        persisted_id = validate_context_id(persisted_id)
 
     context = AgentContext(
         config=config,
-        id=data.get("id", None),  # get new id
+        id=persisted_id,  # get new id when absent
         name=data.get("name", None),
         created_at=(
             _parse_persisted_datetime(data.get("created_at"))

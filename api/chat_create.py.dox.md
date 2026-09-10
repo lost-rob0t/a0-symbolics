@@ -2,45 +2,40 @@
 
 ## Purpose
 
-- Own the `chat_create.py` API endpoint.
-- This module handles chat create requests.
-- Keep this file-level DOX profile synchronized with `chat_create.py` because this directory is intentionally flat.
+- Own the chat-creation API endpoint.
+- Keep caller-supplied current/new context identifiers behind the canonical context-ID boundary before context lookup or creation.
 
 ## Ownership
 
-- `chat_create.py` owns the runtime implementation.
-- `chat_create.py.dox.md` owns durable notes about responsibilities, contracts, side effects, and verification for that implementation.
-- Classes:
-- `CreateChat` (`ApiHandler`)
-  - `async process(self, input: Input, request: Request) -> Output`
+- `CreateChat.process(...)` validates identity, creates/selects the new context, inherits allowed project/model state, reconciles the active profile, and marks global state dirty.
 
 ## Runtime Contracts
 
-- HTTP handlers must derive from `helpers.api.ApiHandler`; WebSocket handlers must derive from `helpers.ws.WsHandler`.
-- Update this file whenever request payloads, authentication or CSRF requirements, response shapes, route side effects, or WebSocket event contracts change.
-- `CreateChat` is an `ApiHandler`.
-- `CreateChat` defines `process(...)`.
-- A newly created chat reconciles its profile after project inheritance, so it
-  never keeps a profile unavailable in the inherited scope.
-- Observed side-effect areas: filesystem writes, model calls, plugin state, settings/state persistence.
-- Imported dependency areas include: `agent`, `helpers`, `helpers.api`.
+- HTTP handler derives from `helpers.api.ApiHandler` and preserves the framework authentication/CSRF policy.
+- A supplied non-empty `current_context` must pass `helpers.context_utils.validate_context_id` before lookup.
+- A supplied `new_context` must pass the same validator; omission generates the normal Agent Zero ID and validates it as an invariant check.
+- An explicitly empty/unsafe `new_context` is invalid and returns HTTP 400 before `AgentContext.get`, `self.use_context`, project inheritance, or other mutation.
+- A newly created chat reconciles its profile after project inheritance so it never keeps a profile unavailable in the inherited scope.
+- This endpoint does not own collision/reuse semantics for otherwise valid IDs; those remain a separate chat-lifecycle contract.
+- Successful response shape remains `{ "ok": true, "ctxid": ..., "message": "Context created." }`.
 
-## Key Concepts
+## Side Effects
 
-- Important called helpers/classes observed in the source: `self.use_context`, `mark_dirty_all`, `guids.generate_id`, `current_context.get_data`, `current_context.get_output_data`, `new_context.set_data`, `new_context.set_output_data`, `is_chat_override_allowed`, `settings.get_settings`, `projects.get_context_project_name`, `projects.reconcile_agent_profile`.
-- Keep request/response, tool, or helper semantics documented here at the same time as source changes.
+- May create/select an AgentContext.
+- May inherit project metadata and an allowed model override.
+- Reconciles profile/project state and marks global chat state dirty.
 
 ## Work Guidance
 
-- Preserve authentication, CSRF, loopback, and API-key checks unless the endpoint contract explicitly changes.
-- Update frontend callers, plugin callers, and tests together when payload shape changes.
-- Use `helpers.api.Response` for non-JSON responses, files, redirects, or status-specific replies.
+- Validate caller-controlled IDs before the first context lookup/mutation.
+- Reuse the shared validator; do not create endpoint-specific path sanitizers.
+- Preserve authentication, CSRF, inheritance, and model-override semantics.
 
 ## Verification
 
-- Run endpoint-specific or API/WebSocket tests for changed behavior; smoke-test browser callers when no focused test exists.
-- Related tests observed by source search:
-  - `tests/test_browser_agent_regressions.py`
+- Run `pytest tests/test_context_id_security.py`.
+- Verify malformed `new_context` values return 400 without reaching context creation.
+- Run nearby chat lifecycle/browser regressions when changing valid chat creation behavior.
 
 ## Child DOX Index
 

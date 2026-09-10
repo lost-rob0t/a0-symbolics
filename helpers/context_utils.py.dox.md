@@ -2,43 +2,34 @@
 
 ## Purpose
 
-- Own the `context_utils.py` helper module.
-- This module provides context managers/utilities for current context binding.
-- Keep this file-level DOX profile synchronized with `context_utils.py` because this directory is intentionally flat.
+- Own shared context lookup/creation helpers and the canonical context-ID trust boundary.
+- Keep API and WebSocket context selection from treating caller-controlled identifiers as paths.
 
 ## Ownership
 
-- `context_utils.py` owns the runtime implementation.
-- `context_utils.py.dox.md` owns durable notes about responsibilities, contracts, side effects, and verification for that implementation.
-- Top-level functions:
-- `use_context(lock: ThreadLockType, ctxid: str, create_if_not_exists: bool=...)`
+- `validate_context_id(ctxid)` owns the canonical opaque identifier syntax.
+- `use_context(lock, ctxid, create_if_not_exists=...)` owns synchronized lookup/creation and validates every non-empty supplied ID before lookup or creation.
 
 ## Runtime Contracts
 
-- Helper modules own reusable framework APIs and must preserve public callers unless all callers, tests, and docs are updated together.
-- Update this file whenever public functions, classes, persistence behavior, path/security assumptions, side effects, or cross-module contracts change.
-- Observed side-effect areas: WebSocket state, settings/state persistence.
-- Imported dependency areas include: `threading`, `typing`.
-
-## Key Concepts
-
-- Newly constructed contexts reconcile their active profile against Global
-  availability before returning. Existing context lookups return the stored
-  context unchanged; explicit profile and project transitions own any repair.
-- Important called helpers/classes observed in the source: `AgentContext.use`, `AgentContext.first`, `AgentContext`, `Exception`, `initialize_agent`, `projects.get_context_project_name`, `projects.reconcile_agent_profile`.
-- Keep request/response, tool, or helper semantics documented here at the same time as source changes.
+- Context IDs are opaque identifiers, never filesystem paths.
+- Accepted supplied IDs are 1-128 ASCII letters, digits, `_`, or `-`; generated Agent Zero IDs remain compatible.
+- Reject separators, traversal components, absolute/URL-like strings, whitespace/control characters, Unicode, and overlong values before context lookup/creation.
+- Empty `ctxid` remains the explicit `use_context` sentinel for selecting the first context or creating a generated default context; it is not a valid persistent context identifier.
+- Newly constructed contexts reconcile their active profile against Global availability before returning.
+- Existing context lookups return the stored context unchanged; explicit profile and project transitions own any repair.
 
 ## Work Guidance
 
+- Reuse `validate_context_id` at external context boundaries instead of inventing endpoint-specific validators.
+- Persistence code must still enforce its own resolved-path containment; boundary validation is defense in depth, not a substitute for filesystem ownership checks.
 - Preserve public helper APIs used by core code and plugins unless every caller is updated.
-- Keep path, auth, secret, persistence, network, and subprocess behavior explicit and bounded.
-- Prefer adding cohesive helper functions here only when behavior is reused across modules.
 
 ## Verification
 
-- Run targeted tests for changed helper behavior; run security regressions for auth, filesystem, WebSocket, tunnel, upload, or secret-handling helpers.
-- `tests/test_projects.py` verifies that lookup is read-only while context
-  creation reconciles once.
+- Run `pytest tests/test_context_id_security.py` after context-ID changes.
+- Run `tests/test_projects.py` for context creation/profile reconciliation behavior.
+- Security regressions must prove invalid IDs cannot create/select filesystem-addressable contexts.
 
 ## Child DOX Index
 
