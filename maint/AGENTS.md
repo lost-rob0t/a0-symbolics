@@ -22,7 +22,9 @@
 - The upstream commit is authoritative; never identify the base by a mutable
   branch name.
 - `upstream.toml` changes only through `scripts/upstream-sync` during a
-  reviewed upstream synchronization.
+  reviewed upstream synchronization; `promote` is the only command that
+  moves the recorded base, and it refuses to run without completed replay
+  evidence under `reports/prepare-<tag>/`.
 - Stable runtime self-updates resolve against the `[distribution]` remotes;
   raw upstream Agent Zero is never an update target (enforced in
   `helpers/self_update.py` and the durable updater, tested in
@@ -45,6 +47,10 @@
 
 - `pytest tests/test_upstream_sync.py tests/test_self_update_policy.py`.
 - `scripts/upstream-sync fork-surface` before and after maintenance changes.
+- A base promotion must show the replay evidence gate (`verify --repo
+  <replay-worktree> --full`), the `promotion.json` record, and the full
+  release pipeline (image build, live symbolic smoke, persistence checks)
+  before merge.
 
 ## Child DOX Index
 

@@ -27,6 +27,7 @@ scripts/upstream-sync prepare v2.13   # isolated worktree replay, stops on confl
 # resolve conflicts in tmp/upstream-replay/<tag>, commit, then:
 scripts/upstream-sync resume v2.13
 scripts/upstream-sync verify --repo tmp/upstream-replay/v2.13 --full
+scripts/upstream-sync promote v2.13   # move the recorded base to the replayed head
 ```
 
 - `prepare` replays the Symbolics series with rerere enabled; reused conflict
@@ -36,6 +37,12 @@ scripts/upstream-sync verify --repo tmp/upstream-replay/v2.13 --full
   of the replayed head is expected before merging an upgrade.
 - Each conflict resolution is recorded under `maint/reports/prepare-<tag>/`;
   recurring resolutions belong in `maint/resolutions/`.
+- `promote` is the only supported base transition. It validates the completed
+  replay evidence (state, branch, clean worktree, upstream commit ancestry),
+  rewrites `maint/upstream.toml` and the fork-surface budget on the replay
+  branch, commits the promotion there, and records `promotion.json` under
+  `maint/reports/prepare-<tag>/`. The replay branch then becomes the
+  promotion PR; release gates run on that branch before merge.
 
 ## Self-update policy
 

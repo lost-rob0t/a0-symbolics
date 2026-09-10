@@ -10,9 +10,13 @@ upstream base, then provides small deterministic maintenance commands:
     scripts/upstream-sync resume [--dir PATH]
     scripts/upstream-sync verify [--repo PATH] [--full]
     scripts/upstream-sync fork-surface [--base REF] [--ref REF] [--write]
+    scripts/upstream-sync promote <tag> [--repo PATH]
 
 Never modifies the primary worktree's checked-out state; replay happens in an
-isolated temporary git worktree under tmp/upstream-replay/.
+isolated temporary git worktree under tmp/upstream-replay/. promote is the
+only supported way to move the canonical base recorded in maint/upstream.toml:
+it validates the completed replay evidence, rewrites the metadata and the
+fork-surface budget on the replay branch, and commits the promotion there.
 """
 from __future__ import annotations
 
@@ -167,6 +171,77 @@ def run_git(*args: str, cwd: Path | None = None, check: bool = True) -> str:
         env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
     )
     return completed.stdout.strip()
+
+
+def git_ok(*args: str, cwd: Path | None = None) -> bool:
+    """Run git and report success; for probes where failure is meaningful."""
+    return subprocess.run(
+        ["git", *args],
+        cwd=str(cwd) if cwd else None,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+    ).returncode == 0
+
+
+def parse_tag_version(tag: str) -> tuple[int, ...] | None:
+    """Parse a v-prefixed release tag into a comparable integer tuple."""
+    text = str(tag or "").strip()
+    if not text.startswith("v"):
+        return None
+    try:
+        return tuple(int(part) for part in text[1:].split("."))
+    except ValueError:
+        return None
+
+
+def rewrite_upstream_metadata(text: str, tag: str, commit: str) -> str:
+    """Rewrite the [upstream] tag/commit.
+
+    Only the [upstream] table changes; the [distribution] and [selfupdate]
+    tables are preserved byte-for-byte.
+    """
+    lines = []
+    in_upstream = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("["):
+            in_upstream = stripped == "[upstream]"
+        if in_upstream and stripped.startswith("tag"):
+            line = f'tag = "{tag}"'
+        elif in_upstream and stripped.startswith("commit"):
+            line = f'commit = "{commit}"'
+        lines.append(line)
+    return "\n".join(lines) + "\n"
+
+
+def replace_identity_example(text: str, prefix: str, identity: str) -> str:
+    """Refresh the e.g. release-identity example in the header comment."""
+    import re
+
+    pattern = rf"e\.g\. {re.escape(prefix)}v[\d.]+\.\d+"
+    return re.sub(pattern, f"e.g. {identity}", text, count=1)
+
+
+def validate_promotion_state(tag: str, state_dir: Path, worktree: Path) -> dict:
+    """Check the completed replay evidence before moving the recorded base."""
+    state_file = state_dir / "state.json"
+    if not state_file.exists():
+        raise SystemExit(f"No replay state for {tag}; run prepare/resume first.")
+    state = json.loads(state_file.read_text())
+    if not state.get("completed"):
+        raise SystemExit(f"Replay for {tag} is not completed; run resume first.")
+    branch = state.get("branch") or f"a0s-replay-{tag.lstrip('v').replace('.', '-')}"
+    worktree = Path(worktree)
+    if not (worktree / ".git").exists():
+        raise SystemExit(f"Replay worktree {worktree} is missing.")
+    current_branch = run_git("rev-parse", "--abbrev-ref", "HEAD", cwd=worktree)
+    if current_branch != branch:
+        raise SystemExit(f"Replay worktree is on {current_branch}, expected {branch}.")
+    if run_git("status", "--porcelain", "--untracked-files=no", cwd=worktree):
+        raise SystemExit("Replay worktree is dirty; commit or clean it first.")
+    head = run_git("rev-parse", "HEAD", cwd=worktree)
+    return {"branch": branch, "head": head}
 
 
 def load_metadata(path: Path = METADATA_FILE) -> dict:
@@ -347,6 +422,81 @@ def cmd_fork_surface(args: argparse.Namespace) -> None:
         FORK_SURFACE_FILE.write_text(output, encoding="utf-8")
         print(f"wrote {FORK_SURFACE_FILE}")
     print(json.dumps({k: v for k, v in surface.items() if k != "entries"}, indent=2))
+
+
+def apply_promotion(worktree: Path, tag: str, new_commit: str, old_commit: str,
+                    meta: dict, checks: dict, state_dir: Path) -> dict:
+    """Rewrite metadata + fork surface on the replay branch and commit it."""
+    head = checks["head"]
+    worktree_metadata = worktree / "maint" / "upstream.toml"
+    if load_metadata(worktree_metadata)["upstream"]["commit"] != old_commit:
+        raise SystemExit("Replay worktree metadata does not match the recorded base; out of sync.")
+    series = int(meta.get("distribution", {}).get("series", 0))
+    prefix = str(meta.get("distribution", {}).get("release_prefix", "a0s-"))
+    text = worktree_metadata.read_text(encoding="utf-8")
+    updated = replace_identity_example(
+        rewrite_upstream_metadata(text, tag, new_commit),
+        prefix,
+        f"{prefix}{tag}.{series}",
+    )
+    worktree_metadata.write_text(updated, encoding="utf-8")
+    surface = fork_surface(new_commit, head)
+    (worktree / "maint" / "fork-surface.toml").write_text(
+        write_fork_surface_toml(surface), encoding="utf-8"
+    )
+    summary = {
+        "old_base": {"tag": meta["upstream"]["tag"], "commit": old_commit},
+        "new_base": {"tag": tag, "commit": new_commit},
+        "replay_branch": checks["branch"],
+        "replay_head": head,
+        "fork_surface": {
+            key: surface[key]
+            for key in ("base", "ref", "files_changed", "files_added",
+                        "upstream_owned_modified", "loc_added", "loc_removed",
+                        "core_patch_loc", "core_patches")
+        },
+    }
+    promotion_report = state_dir / "promotion.json"
+    promotion_report.write_text(json.dumps(summary, indent=2) + "\n")
+    run_git("add", "maint/upstream.toml", "maint/fork-surface.toml", cwd=worktree)
+    run_git("add", str(promotion_report.relative_to(REPO_ROOT)), cwd=worktree)
+    run_git(
+        "commit", "-q",
+        "-m", f"feat(maint): promote canonical upstream base to {tag} ({new_commit[:12]})",
+        cwd=worktree,
+    )
+    summary["promotion_commit"] = run_git("rev-parse", "HEAD", cwd=worktree)
+    return summary
+
+
+def cmd_promote(args: argparse.Namespace) -> None:
+    """Move the canonical upstream base to a completed, verified replay head."""
+    meta = load_metadata()
+    base = upstream_ref(meta)
+    old_tag, old_commit = base["tag"], base["commit"]
+    new_commit = resolve_tag(args.tag)
+    old_v, new_v = parse_tag_version(old_tag), parse_tag_version(args.tag)
+    if old_v is None or new_v is None:
+        raise SystemExit(f"Cannot compare recorded base {old_tag!r} with {args.tag!r}.")
+    if new_commit == old_commit:
+        print(f"already promoted: base is {old_tag} {old_commit[:12]}")
+        return
+    if new_v < old_v:
+        raise SystemExit(f"Refusing to move the recorded base backwards: {old_tag} -> {args.tag}.")
+    if is_dirty():
+        raise SystemExit("Primary worktree is dirty; promotion requires a clean checkout.")
+    worktree = Path(args.repo) if args.repo else REPO_ROOT / "tmp" / "upstream-replay" / args.tag
+    state_dir = REPO_ROOT / "maint" / "reports" / f"prepare-{args.tag}"
+    checks = validate_promotion_state(args.tag, state_dir, worktree)
+    head = checks["head"]
+    if not git_ok("merge-base", "--is-ancestor", new_commit, head, cwd=worktree):
+        raise SystemExit(
+            f"Replay head {head[:12]} does not contain {args.tag} {new_commit[:12]}; promotion refused."
+        )
+    summary = apply_promotion(worktree, args.tag, new_commit, old_commit, meta, checks, state_dir)
+    print(json.dumps(summary, indent=2))
+    print(f"\npromotion commit: {summary['promotion_commit'][:12]} on {checks['branch']}")
+    print("next: run the release gates on this branch, then open the promotion PR")
 
 
 def cmd_status(args: argparse.Namespace) -> None:
@@ -671,6 +821,11 @@ def main() -> None:
     p.add_argument("--ref", default="")
     p.add_argument("--write", action="store_true", help="write maint/fork-surface.toml")
     p.set_defaults(func=cmd_fork_surface)
+
+    p = sub.add_parser("promote", help="move the canonical upstream base to a completed replay head")
+    p.add_argument("tag")
+    p.add_argument("--repo", default="", help="replay worktree path (default: tmp/upstream-replay/<tag>)")
+    p.set_defaults(func=cmd_promote)
 
     args = parser.parse_args()
     args.func(args)
