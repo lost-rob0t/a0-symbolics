@@ -41,7 +41,7 @@ class TransportRecovery(Enum):
     FALLBACK_TO_CHAT = "fallback_to_chat"
 
 
-RESPONSES_ALIASES = {"response", "responses", "responses_api"}
+RESPONSES_ALIASES = {"", "auto", "default", "response", "responses", "responses_api"}
 RESPONSES_REASONING_EFFORTS = {"minimal", "low", "medium", "high"}
 RESPONSES_REASONING_FALLBACK_EFFORT = "high"
 NO_REASONING_EFFORT_ALIASES = {"", "0", "false", "no", "none", "off", "disabled"}
