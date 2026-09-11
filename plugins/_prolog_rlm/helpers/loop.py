@@ -50,8 +50,32 @@ def mode_budget_tokens(ctx_length: int, percent: int, mode: str) -> dict[str, An
 
 _MAX_COMPILED_UNITS = 192
 _MAX_COMPILED_UNIT_CHARS = 12_000
+_MAX_SYSTEM_UNIT_CHARS = 30_000
 _MAX_TOOL_DECLARATIONS = 64
 _RUNTIME_NATIVE_TOOLS = {"response"}
+
+
+def _split_system_text(system_text: str) -> list[str]:
+    """Split the rendered system prompt into compiler-bounded sections.
+
+    The prompt compiler rejects any single input text above 32768 chars
+    (``input_too_large``); split on paragraph boundaries so the full prompt
+    survives as multiple permanent instruction units.
+    """
+    if len(system_text) <= _MAX_SYSTEM_UNIT_CHARS:
+        return [system_text]
+    sections: list[str] = []
+    current = ""
+    for part in system_text.split("\n\n"):
+        candidate = f"{current}\n\n{part}" if current else part
+        if len(candidate) > _MAX_SYSTEM_UNIT_CHARS and current:
+            sections.append(current)
+            current = part
+        else:
+            current = candidate
+    if current:
+        sections.append(current)
+    return sections
 
 
 def collect_tool_declarations(agent: Any, compiler_config: dict[str, Any]) -> list[dict[str, Any]]:
@@ -93,16 +117,19 @@ def compile_context_request(
     units: list[dict[str, Any]] = []
     system_text = str(system_message or "").strip()
     if system_text:
-        units.append(
-            {
-                "kind": "instruction",
-                "format": "agent_zero_context",
-                "name": "chat_system_000",
-                "description": "Agent Zero system prompt",
-                "content": system_text,
-                "permanent": True,
-            }
-        )
+        for index, section in enumerate(_split_system_text(system_text)):
+            if not section.strip():
+                continue
+            units.append(
+                {
+                    "kind": "instruction",
+                    "format": "agent_zero_context",
+                    "name": f"chat_system_{index:03d}",
+                    "description": "Agent Zero system prompt",
+                    "content": section,
+                    "permanent": True,
+                }
+            )
     for unit in tool_units or []:
         units.append(dict(unit))
         if len(units) >= _MAX_COMPILED_UNITS:
