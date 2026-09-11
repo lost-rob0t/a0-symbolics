@@ -3,7 +3,10 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
-    prolog-rlm.url = "github:lost-rob0t/prolog-rlm/e1ed6c2b5f717d9bb380fcf22d144737299197f8";
+    # Git fetch (not github tarball): the tarball unpack hash differs across
+    # nix versions (export-ignore), which breaks pins when hosts and the
+    # container runtime disagree on unpack semantics.
+    prolog-rlm.url = "git+https://github.com/lost-rob0t/prolog-rlm?rev=e1ed6c2b5f717d9bb380fcf22d144737299197f8";
     prolog-rlm.inputs.nixpkgs.follows = "nixpkgs";
   };
 

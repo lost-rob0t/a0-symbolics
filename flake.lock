@@ -44,16 +44,16 @@
       "locked": {
         "lastModified": 1788578316,
         "narHash": "sha256-l9VjDZqs99qCmXyQzfZpn2xMSIXRVvaTlmGL0VxUcic=",
-        "owner": "lost-rob0t",
-        "repo": "prolog-rlm",
+        "ref": "refs/heads/main",
         "rev": "e1ed6c2b5f717d9bb380fcf22d144737299197f8",
-        "type": "github"
+        "revCount": 763,
+        "type": "git",
+        "url": "https://github.com/lost-rob0t/prolog-rlm"
       },
       "original": {
-        "owner": "lost-rob0t",
-        "repo": "prolog-rlm",
         "rev": "e1ed6c2b5f717d9bb380fcf22d144737299197f8",
-        "type": "github"
+        "type": "git",
+        "url": "https://github.com/lost-rob0t/prolog-rlm"
       }
     },
     "root": {
