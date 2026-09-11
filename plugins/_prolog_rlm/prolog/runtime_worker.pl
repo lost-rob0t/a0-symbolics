@@ -22,7 +22,9 @@ load_agent_zero_pack :-
     source_file(main(_), Worker),
     file_directory_name(Worker, Directory),
     directory_file_path(Directory, 'agent_zero_tool_pack.pl', Pack),
-    load_files(Pack, [silent(true)]).
+    load_files(Pack, [silent(true)]),
+    directory_file_path(Directory, 'agent_zero_host_tools.pl', HostTools),
+    load_files(HostTools, [silent(true)]).
 
 request_loop :-
     read_line_to_string(user_input, Line),
@@ -97,9 +99,14 @@ dispatch(direct, Arguments, Result) :-
     !,
     required_text(Arguments, prompt, Prompt),
     optional_text(Arguments, context, "", Context),
-    runtime_options(Arguments, Options),
-    rlm:rlm_direct(Prompt, text(Context), Options, Outcome),
-    runtime_result(Outcome, Result).
+    runtime_options(Arguments, Options0),
+    agent_zero_host_tools:host_tool_options(Arguments, Options0, Options, Registry),
+    setup_call_cleanup(
+        true,
+        (   rlm:rlm_direct(Prompt, text(Context), Options, Outcome),
+            runtime_result(Outcome, Result)
+        ),
+        agent_zero_host_tools:cleanup_host_tools(Registry)).
 dispatch(complete, Arguments, Result) :-
     !,
     required_text(Arguments, query, Query),
@@ -156,6 +163,8 @@ pack_load_result(Other, _{status:error, error:Other}).
 
 inert_host_tool(_, _, _) :-
     throw(runtime_request_error(host_tool_execution_not_available)).
+
+% Tool-pack catalog ----------------------------------------------------------
 
 declaration_categories(Declarations, Categories) :-
     findall(Category,
@@ -234,29 +243,3 @@ text_atom(Value, Atom) :- string(Value), !, atom_string(Atom, Value).
 text_string(Value, Text) :- string(Value), !, Text = Value.
 text_string(Value, Text) :- atom(Value), !, atom_string(Value, Text).
 
-json_safe(Value, Safe) :-
-    (   var(Value)
-    ->  Safe = "_"
-    ;   is_dict(Value)
-    ->  dict_pairs(Value, _, Pairs),
-        maplist(json_pair, Pairs, SafePairs),
-        dict_pairs(Safe, json, SafePairs)
-    ;   is_list(Value)
-    ->  maplist(json_safe, Value, Safe)
-    ;   string(Value)
-    ->  Safe = Value
-    ;   number(Value)
-    ->  Safe = Value
-    ;   memberchk(Value, [true,false,null])
-    ->  Safe = Value
-    ;   atom(Value)
-    ->  atom_string(Value, Safe)
-    ;   compound(Value)
-    ->  Value =.. [Functor|Args],
-        atom_string(Functor, FunctorText),
-        maplist(json_safe, Args, SafeArgs),
-        Safe = _{'$term':FunctorText, args:SafeArgs}
-    ;   term_string(Value, Safe, [quoted(true), numbervars(true)])
-    ).
-
-json_pair(Key-Value, Key-Safe) :- json_safe(Value, Safe).

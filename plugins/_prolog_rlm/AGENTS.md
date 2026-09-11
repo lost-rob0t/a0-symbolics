@@ -34,7 +34,8 @@
 - `git` is a closed read-only inspection adapter. Mutating Git operations remain explicit terminal work through an authorized execution tool.
 - `patch` retains the text editor's stale-read and structured-patch protections.
 - Tool execution remains subject to the normal Agent Zero tool lifecycle, scoped tool policy, intervention handling, and plugin hooks.
-- Credentials stay in the inherited process environment and must never appear in requests, results, logs, or repository files.
+- Credentials stay in the inherited process environment and must never appear in requests, results, logs, or repository files. The bridge resolves the OpenRouter credential from Agent Zero settings (``api_keys["openrouter"]``) or the framework dotenv resolver and injects it into the worker process environment only (``helpers/credentials.py``).
+- Tool management is compiler-authoritative: the chat loop collects the agent's enabled tool declarations through the context compiler's canonical collector, the runtime ``context_compile`` outcome's ``active_tools`` (Prolog-selected) defines the turn's tool set, and ``direct`` carries only those declarations. The worker validates them into a tool registry (``prolog/agent_zero_host_tools.pl``), grants the registry context ``allow_session`` authority because Agent Zero remains the execution-policy authority, and routes provider tool calls back to the host through callback frames. The host callback executes tools through the normal Agent Zero tool lifecycle (``agent.get_tool`` + hooks). Symbolic ``complete`` stays synthesis-only.
 
 ## Work Guidance
 

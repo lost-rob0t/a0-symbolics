@@ -80,12 +80,25 @@ class PrologRLM:
 
     async def direct(self, prompt: str, context: str = "",
                      budget: dict[str, Any] | None = None,
+                     declarations: list[dict[str, Any]] | None = None,
+                     session: str = "",
                      timeout: float | None = None) -> RunResult:
-        return await self.call(
-            "direct",
-            {"prompt": prompt, "context": context, "budget": budget or {}},
-            timeout=timeout,
-        )
+        arguments: dict[str, Any] = {
+            "prompt": prompt,
+            "context": context,
+            "budget": budget or {},
+        }
+        if declarations:
+            arguments["declarations"] = declarations
+            arguments["session"] = session
+        return await self.call("direct", arguments, timeout=timeout)
+
+    def register_tool_handler(self, token: str, handler: Any) -> None:
+        """Bind the trusted host callback for one direct-run session."""
+        self.transport.register_tool_handler(token, handler)
+
+    def unregister_tool_handler(self, token: str) -> None:
+        self.transport.unregister_tool_handler(token)
 
     async def compile(self, request: dict[str, Any],
                       timeout: float | None = None) -> RunResult:

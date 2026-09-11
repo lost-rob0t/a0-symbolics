@@ -9,7 +9,7 @@
 
 - `helpers/catalog.py` adapts enabled Agent Zero tools, MCP declarations, skills, and DOX into bounded inert units.
 - `helpers/working_context.py` and `helpers/projection.py` own host-side working-message and native-schema application.
-- `helpers/transport.py` and `helpers/bridge.py` own bounded sidecar supervision and activation.
+- `helpers/transport.py` and `helpers/bridge.py` own bounded sidecar supervision and activation. The worker protocol supports inline ``callback`` frames (a worker running a long operation may request a host computation and block for the inline reply); the frame loop stays fail-closed: unknown session tokens and handler exceptions answer a typed error, never crash the worker.
 - `prolog/context_worker.pl` owns the closed JSON worker entry point.
 - `extensions/` owns prompt interception, eager-catalog removal, final working-context compilation, and native-schema filtering.
 

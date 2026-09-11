@@ -43,7 +43,8 @@ class HarnessStub:
             elapsed_seconds=0.01,
         )
 
-    async def direct(self, query, context="", budget=None, timeout=None):
+    async def direct(self, query, context="", budget=None, timeout=None,
+                     declarations=None, session=""):
         self.calls.append(
             {
                 "action": "direct",
@@ -51,6 +52,8 @@ class HarnessStub:
                 "context": context,
                 "budget": budget,
                 "timeout": timeout,
+                "declarations": declarations or [],
+                "session": session,
             }
         )
         from plugins._prolog_rlm.helpers.harness import RunResult

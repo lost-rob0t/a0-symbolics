@@ -50,6 +50,12 @@ class WorkerTransport:
     def __init__(self, bridge: PrologRuntimeBridge) -> None:
         self.bridge = bridge
 
+    def register_tool_handler(self, token: str, handler: Any) -> None:
+        self.bridge.register_tool_handler(token, handler)
+
+    def unregister_tool_handler(self, token: str) -> None:
+        self.bridge.unregister_tool_handler(token)
+
     def run(
         self,
         action: str,
