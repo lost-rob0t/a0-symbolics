@@ -129,7 +129,12 @@ activate_prolog_rlm() {
   local prolog_rlm
   local pack_dir="${XDG_DATA_HOME:-$HOME/.local/share}/swi-prolog/pack"
 
-  prolog_rlm="$(nix build "$source_root#prolog-rlm" --no-link --print-out-paths)"
+  # Re-resolve the pack input at boot: the rev is pinned in flake.nix, but the
+  # locked NAR hash differs between nix versions (tarball vs git-tree unpack
+  # semantics), so a host-computed pin can never verify inside this container
+  # against the persistent store. Re-resolving keeps the boot self-consistent
+  # with the container's own nix while still building the pinned rev.
+  prolog_rlm="$(nix build "$source_root#prolog-rlm" --no-link --print-out-paths --recreate-lock-file)"
   ln -sfn "$prolog_rlm" /nix/var/nix/gcroots/a0-symbolics-prolog-rlm
   mkdir -p "$pack_dir"
   ln -sfn "$prolog_rlm/share/swi-prolog/pack/prolog_rlm" "$pack_dir/prolog_rlm"
