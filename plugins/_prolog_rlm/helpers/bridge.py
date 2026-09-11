@@ -11,6 +11,7 @@ from plugins._prolog_context_compiler.helpers.transport import (
     PrologBridgeError,
     PrologJsonWorker,
 )
+from plugins._prolog_rlm.helpers.credentials import worker_environment
 
 
 class PrologRuntimeBridgeError(PrologBridgeError):
@@ -30,7 +31,9 @@ class PrologRuntimeBridge(PrologJsonWorker):
             or os.getenv("OPENROUTER_TEST_MODEL")
             or ""
         ).strip()
-        environment = {"OPENROUTER_TEST_MODEL": model} if model else {}
+        environment = worker_environment(settings)
+        if model:
+            environment["OPENROUTER_TEST_MODEL"] = model
         worker = Path(__file__).resolve().parent.parent / "prolog" / "runtime_worker.pl"
         super().__init__(
             worker,
