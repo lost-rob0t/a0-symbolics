@@ -1,6 +1,6 @@
 ---
 name: linux-desktop
-description: "Control Agent Zero's Docker/Xpra desktop and GUI apps; not the user's host computer."
+description: "Agent Zero's built-in Docker/Xpra Linux Desktop and GUI apps; Not for A0 CLI /computer-use."
 version: "0.3.0"
 author: "Agent Zero Core Team"
 tags: ["linux", "desktop", "xfce", "libreoffice", "gui", "files", "terminal"]

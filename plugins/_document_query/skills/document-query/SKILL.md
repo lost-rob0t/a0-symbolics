@@ -1,6 +1,6 @@
 ---
 name: document-query
-description: "Read, extract or compare PDFs, Office files, URLs and large text; OCR when vision fails."
+description: "answering questions over local or remote documents: PDFs, Office, URLs, large text; fallback OCR."
 version: 1.0.0
 author: Agent Zero Team
 tags: ["documents", "ocr", "qa", "pdf", "code", "analysis"]

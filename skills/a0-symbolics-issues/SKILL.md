@@ -1,6 +1,6 @@
 ---
 name: a0-symbolics-issues
-description: Use when reporting, triaging, or cross-linking bugs and regressions for a0-symbolics (Agent Zero + Prolog-RLM integration) or the prolog-rlm runtime itself, in the correct GitHub issue tracker.
+description: Report, triage, or cross-link a0-symbolics and prolog-rlm bugs in the correct GitHub issue tracker.
 triggers:
   - "file an issue"
   - "report a bug"

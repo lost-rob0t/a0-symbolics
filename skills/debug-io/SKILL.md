@@ -1,6 +1,6 @@
 ---
 name: debug-io
-description: Debug prolog-rlm provider HTTP IO — OpenRouter requests, attribution headers, live test credentials, and fetching per-generation completion data by generation id. Use when investigating provider errors, 401/timeout failures, request/response payloads, or OpenRouter usage and cost data.
+description: "Debug prolog-rlm provider HTTP IO: OpenRouter requests, headers, credentials, payloads, and errors."
 ---
 
 # Debugging provider IO in prolog-rlm

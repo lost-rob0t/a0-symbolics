@@ -20,28 +20,65 @@ def json_parse_dirty(json: str) -> dict[str, Any] | None:
     return first_data
 
 
+def _json_object_brace_balanced(content: str) -> bool:
+    """True when braces outside string values balance over the whole text.
+
+    Used to keep the tolerant recovery a complete-message fallback: a streamed
+    prefix that merely looks brace-shaped (the model is still emitting) must
+    not satisfy it, while a complete message with control characters inside
+    string values still does.
+    """
+    depth = 0
+    in_string = False
+    escaped = False
+    for char in content:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth < 0:
+                return False
+    return depth == 0 and not in_string
+
+
 def extract_tool_request(content: str) -> dict[str, Any] | None:
     if not content or not isinstance(content, str):
         return None
 
     content = content.strip()
-    if not (content.startswith("{") and content.endswith("}")):
-        return None
+    # Upstream fast-fails non-brace content (it has no XML path). Symbolics
+    # keeps the text-based <invoke> parser reachable, so the fast-fail only
+    # gates the JSON root extraction below.
+    if content.startswith("{") and content.endswith("}"):
+        root = extract_json_root_string(content)
+        if root != content:
+            if not root and _json_object_brace_balanced(content):
+                # Regex root slicing failed (for example raw control characters
+                # inside string values). The tolerant parser can still recover
+                # the complete tool request from the whole message. The
+                # brace-balance gate keeps streamed, not-yet-complete prefixes
+                # from satisfying it (the response stream must stop on the
+                # exact canonical root only).
+                request = _parse_json_root_object(content)
+                if request is not None and _is_tool_request(request):
+                    return request
+            return extract_xml_tool_request(content)
 
-    root = extract_json_root_string(content)
-    if root != content:
-        if not root and content.startswith("{"):
-            # Regex root slicing failed (for example raw control characters
-            # inside string values). The tolerant parser can still recover
-            # the complete tool request from the whole message.
-            request = _parse_json_root_object(content)
-            if request is not None and _is_tool_request(request):
-                return request
+        request = _parse_json_root_object(root)
+        if request is not None and _is_tool_request(request):
+            return request
         return extract_xml_tool_request(content)
 
-    request = _parse_json_root_object(root)
-    if request is not None and _is_tool_request(request):
-        return request
     return extract_xml_tool_request(content)
 
 

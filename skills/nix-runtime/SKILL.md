@@ -1,6 +1,6 @@
 ---
 name: nix-runtime
-description: Use for installing or changing persistent CLI tooling in a0-symbolics with Nix/Home Manager, inspecting the persistent Nix environment, or repairing the Home Manager profile.
+description: Install or change persistent CLI tooling with Nix/Home Manager; inspect or repair the Nix profile.
 triggers:
   - "nix"
   - "home manager"

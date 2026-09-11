@@ -1,6 +1,6 @@
 ---
 name: system-jobs
-description: Use when the user wants a real OS cron job, recurring shell script, persistent crontab entry, or to inspect/run System Jobs managed by a0-symbolics.
+description: Use for real OS cron jobs, recurring shell scripts, persistent crontab entries, or System Jobs.
 triggers:
   - "system job"
   - "cron job"

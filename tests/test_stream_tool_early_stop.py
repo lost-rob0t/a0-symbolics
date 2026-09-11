@@ -402,7 +402,10 @@ async def test_unified_call_closes_responses_stream_when_callback_raises(monkeyp
 
 
 @pytest.mark.asyncio
-async def test_chat_completions_default_uses_acompletion(monkeypatch):
+async def test_default_api_mode_uses_responses_and_explicit_chat_uses_acompletion(monkeypatch):
+    """Symbolics keeps the Responses-first transport default that upstream
+    v2.12 flipped to Chat Completions; explicit chat aliases still route to
+    the Chat Completions transport."""
     stream = _AsyncChunkStream([_chunk("hello")])
     calls: list[str] = []
 
@@ -413,7 +416,8 @@ async def test_chat_completions_default_uses_acompletion(monkeypatch):
         return stream
 
     async def fake_aresponses(*args, **kwargs):
-        raise AssertionError("Responses path should not be used")
+        calls.append("responses")
+        return _AsyncChunkStream([_response_event("hello")])
 
     async def fake_rate_limiter(*args, **kwargs):
         return None
@@ -438,6 +442,20 @@ async def test_chat_completions_default_uses_acompletion(monkeypatch):
 
     assert response == "hello"
     assert reasoning == ""
+    assert calls == ["responses"]
+
+    calls.clear()
+    wrapper = models.LiteLLMChatWrapper(
+        model="test-model",
+        provider="openai",
+        model_config=None,
+        a0_api_mode="chat",
+    )
+    response, reasoning = await wrapper.unified_call(
+        messages=[],
+        response_callback=response_callback,
+    )
+    assert response == "hello"
     assert calls == ["chat"]
 
 
